@@ -127,7 +127,7 @@ void Sender::listener() {
             }
 
             // if rexmit zapisz
-            if (std::regex_match(message_buf, std::regex(R"(LOUDER_PLEASE [0-9]+(,[0-9]+)*\\n)"))) { // TODO spacje
+            if (std::regex_match(message_buf, std::regex(R"(LOUDER_PLEASE [0-9]+(,[0-9]+)*\n)"))) { // TODO spacje
                 std::string msg(message_buf);
                 msg.erase(0, 14);
                 std::istringstream msg_stream(msg);

@@ -84,7 +84,7 @@ Receiver::~Receiver() {
             continue;
         }
         reply_buf[read_bytes] = '\0';
-        if (std::regex_match(reply_buf, std::regex(R"(BOREWICZ_HERE [0-9\.]+ [0-9]+ [\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F]\\n)"))) {
+        if (std::regex_match(reply_buf, std::regex(R"(BOREWICZ_HERE [0-9\.]+ [0-9]+ [\x21-\x7F][\x20-\x7F]*[\x21-\x7F]\n)"))) {
             std::string reply(reply_buf);
             reply.erase(0, 14);
             std::istringstream reply_stream(reply);
