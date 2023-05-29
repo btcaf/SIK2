@@ -20,7 +20,7 @@ typedef struct station_data {
 } Station_Data;
 
 struct station_data_cmp {
-    bool operator()(const station_data& a, const station_data &b) {
+    bool operator()(const station_data& a, const station_data &b) const {
         if (a.name != b.name) {
             return a.name < b.name;
         }

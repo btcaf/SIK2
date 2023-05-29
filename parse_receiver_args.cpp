@@ -27,7 +27,7 @@ Temp_Receiver parse_receiver_args(int argc, char *argv[]) {
             )
             (
                     "ui-port,U",
-                    po::value<int32_t>(&CTRL_PORT)->default_value(19922)
+                    po::value<int32_t>(&UI_PORT)->default_value(19922)
             )
             (
                     "buffer-size,b",

@@ -44,7 +44,7 @@ Receiver::~Receiver() {
         uint64_t time = time_since_epoch_ms();
 
         char const *msg = "ZERO_SEVEN_COME_IN\n";
-        ssize_t sent_bytes = sendto(lookup_socket_fd, msg, 19, 0, (struct sockaddr*) &discover_address, sizeof(discover_address));
+        sendto(lookup_socket_fd, msg, 19, 0, (struct sockaddr*) &discover_address, sizeof(discover_address));
         // TODO błąd?
 
         {
