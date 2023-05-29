@@ -144,13 +144,10 @@ Receiver::~Receiver() {
 }
 
 void Receiver::new_station(const Station_Data& station_data) {
-    bool old_receiving = receiving;
-    {
-        std::lock_guard<std::mutex> lock{mut};
-        receiving = false;
-    }
     {
         std::unique_lock<std::mutex> lock(mut);
+        bool old_receiving = receiving;
+        receiving = false;
         cv_loop_start.wait(lock, [this] { return loop_start; });
         if (old_receiving) {
             setsockopt(data_socket_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (void *) &curr_station.ip_mreq, sizeof(curr_station.ip_mreq));
