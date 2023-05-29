@@ -180,7 +180,6 @@ void Sender::rexmit_sender() {
                 throw std::runtime_error("sendto() failed"); // TODO mega sus
             }
         }
-        break;
     }
 }
 
