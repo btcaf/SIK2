@@ -99,6 +99,7 @@ Receiver::~Receiver() {
             std::getline(reply_stream, multicast_address, ' ');
             std::getline(reply_stream, port_string, ' ');
             std::getline(reply_stream, name, ' ');
+            name.pop_back();
 
             if (name.length() > 64) {
                 continue;
