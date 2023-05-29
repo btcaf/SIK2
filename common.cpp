@@ -10,11 +10,16 @@
 /**
  * Zaadaptowana funkcja bind_socket() z zajęć laboratoryjnych.
  */
-int bind_socket(uint16_t port) {
+int bind_socket(uint16_t port, bool reuse) {
     // zamykane po nieudanym bind() lub w destruktorze klasy Receiver
     int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0) {
         throw std::runtime_error("Error creating socket");
+    }
+
+    if (reuse) {
+        int optval = 1;
+        setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
     }
 
     struct sockaddr_in server_address;

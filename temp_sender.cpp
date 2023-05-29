@@ -29,7 +29,7 @@ Sender Temp_Sender::make_sender() {
     }
     // TODO jakieś reuse
 
-    int ctrl_socket_fd = bind_socket(ctrl_port);
+    int ctrl_socket_fd = bind_socket(ctrl_port, false);
 
     std::string reply_message = "BOREWICZ_HERE " + multicast_address_string + " " +
             std::to_string(data_port) + " " + name + "\n";

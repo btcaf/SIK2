@@ -151,7 +151,7 @@ void Receiver::new_station(const Station_Data& station_data) {
             close(data_socket_fd);
         }
         curr_station = station_data;
-        data_socket_fd = bind_socket(station_data.port);
+        data_socket_fd = bind_socket(station_data.port, false);
         struct timeval timeout;
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
