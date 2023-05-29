@@ -54,6 +54,8 @@ private:
      */
     [[noreturn]] void listener();
 
+    void new_station(const Station_Data& station_data);
+
     /**
      * Kod wątku odbierającego dane binarne.
      */
@@ -90,10 +92,11 @@ private:
     }
 
     /**
-     * Zwraca true, jeśli wiadomość została poprawnie odczytana (i zapisuje ją
-     * w msg_buffer) i false, jeśli została porzucona.
+     * Zwraca 1, jeśli wiadomość została poprawnie odczytana (i zapisuje ją
+     * w msg_buffer), 0, jeśli została porzucona, a -1, jeśli należy zakończyć
+     * odbieranie.
      */
-    bool receive_message();
+    int receive_message();
 
     /* wyszukiwanie stacji */
     const struct sockaddr_in discover_address;
@@ -107,6 +110,8 @@ private:
 
     int data_socket_fd;
     Station_Data curr_station;
+    bool receiving = false;
+    bool loop_start = true;
     // numer sesji musi być dodatni, więc pierwsza paczka zostanie poprawnie
     // zidentyfikowana jako pochodząca z nowej sesji
     uint64_t session_id = 0;
@@ -118,8 +123,11 @@ private:
     byte_t *msg_buffer = NULL;
     uint64_t max_packets;
 
+    std::mutex change_station_mut;
     std::mutex mut;
     std::condition_variable cv_writing;
+    std::condition_variable cv_receiving;
+    std::condition_variable cv_loop_start;
     bool writing = false;
 
     // numery paczek poniżej rozumiemy jako kolejne liczby całkowite,
