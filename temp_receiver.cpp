@@ -22,6 +22,10 @@ Receiver Temp_Receiver::make_receiver() {
     if (fcntl(lookup_socket_fd, F_SETFL, O_NONBLOCK) < 0) {
         throw std::runtime_error("Error configuring socket");
     }
+    int optval = 1;
+    if (setsockopt(lookup_socket_fd, SOL_SOCKET, SO_BROADCAST, &optval, sizeof(optval))) {
+        throw std::runtime_error("Error configuring socket");
+    }
     int reply_socket_fd = bind_socket(ctrl_port, true);
     int ui_socket_fd = bind_socket(ui_port, false);
 
