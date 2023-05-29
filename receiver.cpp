@@ -50,6 +50,7 @@ Receiver::~Receiver() {
         {
             std::lock_guard<std::mutex> lock{change_station_mut};
             // TODO słabe
+            bool set_new = stations[curr_station] + 20 < time;
             std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
                 return value + 20 < time;
@@ -58,7 +59,7 @@ Receiver::~Receiver() {
             if (receiving && stations.empty()) {
                 close(data_socket_fd);
                 receiving = false;
-            } else {
+            } else if (set_new) {
                 new_station(stations.begin()->first);
             }
         }
