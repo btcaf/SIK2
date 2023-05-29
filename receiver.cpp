@@ -50,7 +50,7 @@ Receiver::~Receiver() {
         {
             std::lock_guard<std::mutex> lock{change_station_mut};
             // TODO słabe
-            bool set_new = stations[curr_station] + 20 < time;
+            bool set_new = !stations.empty() && stations[curr_station] + 20 < time;
             std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
                 return value + 20 < time;
