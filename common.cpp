@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <cstring>
+#include <chrono>
 
 /**
  * Zaadaptowana funkcja bind_socket() z zajęć laboratoryjnych.
@@ -63,4 +64,9 @@ struct sockaddr_in get_address(const std::string& host, uint16_t port, bool chec
 
 
     return address;
+}
+
+uint64_t time_since_epoch_ms() {
+    return std::chrono::system_clock::now().time_since_epoch() /
+           std::chrono::milliseconds(1);
 }

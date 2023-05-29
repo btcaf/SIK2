@@ -7,13 +7,36 @@
 #include <mutex>
 #include <condition_variable>
 #include <unordered_set>
+#include <map>
 
 using byte_t = uint8_t;
+
+typedef struct station_data {
+    std::string name;
+    struct ip_mreq ip_mreq;
+    uint16_t port;
+    struct sockaddr_in address;
+    socklen_t address_length;
+} Station_Data;
+
+struct station_data_cmp {
+    bool operator()(const station_data& a, const station_data &b) {
+        if (a.name != b.name) {
+            return a.name < b.name;
+        }
+
+        if (a.ip_mreq.imr_multiaddr.s_addr != b.ip_mreq.imr_multiaddr.s_addr) {
+            return a.ip_mreq.imr_multiaddr.s_addr < b.ip_mreq.imr_multiaddr.s_addr;
+        }
+
+        return a.port < b.port;
+    }
+};
 
 class Receiver {
 public:
     Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
-            size_t _buffer_size, std::chrono::milliseconds _rexmit_time, std::string _favorite_name);
+            size_t _buffer_size, uint64_t _rexmit_time, std::string _favorite_name);
 
     ~Receiver();
 
@@ -60,7 +83,7 @@ private:
                                       addrlen);
 
         if (read_bytes < 0 || (size_t) read_bytes < min_expected) {
-            throw std::runtime_error("recvfrom() failed");
+            throw std::runtime_error("recvfrom() failed"); // TODO sus
         }
 
         return read_bytes;
@@ -80,8 +103,10 @@ private:
     /* TODO opis */
     int ui_socket_fd;
 
-    int socket_fd;
-    in_addr_t sender_address;
+    std::map<Station_Data, uint64_t, station_data_cmp> stations;
+
+    int data_socket_fd;
+    Station_Data curr_station;
     // numer sesji musi być dodatni, więc pierwsza paczka zostanie poprawnie
     // zidentyfikowana jako pochodząca z nowej sesji
     uint64_t session_id = 0;
@@ -94,7 +119,7 @@ private:
     uint64_t max_packets;
 
     std::mutex mut;
-    std::condition_variable cv;
+    std::condition_variable cv_writing;
     bool writing = false;
 
     // numery paczek poniżej rozumiemy jako kolejne liczby całkowite,
@@ -109,7 +134,7 @@ private:
     std::unordered_set<uint64_t> received_packets;
 
     /* TODO opis */
-    const std::chrono::milliseconds rexmit_time;
+    const uint64_t rexmit_time;
     const std::string favorite_name;
 };
 

@@ -47,11 +47,11 @@ Temp_Receiver parse_receiver_args(int argc, char *argv[]) {
 
     po::notify(vm);
 
-    if (CTRL_PORT < 0 || CTRL_PORT > 65535) {
+    if (CTRL_PORT < 0 || CTRL_PORT > UINT16_MAX) {
         throw std::runtime_error("Invalid control port number");
     }
 
-    if (UI_PORT < 0 || UI_PORT > 65535) {
+    if (UI_PORT < 0 || UI_PORT > UINT16_MAX) {
         throw std::runtime_error("Invalid UI port number");
     }
 

@@ -1,13 +1,18 @@
 #include "receiver.hpp"
+#include "common.hpp"
 #include <iostream>
 #include <unistd.h>
 #include <thread>
 #include <cstring>
 #include <chrono>
 #include <utility>
+#include <regex>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 Receiver::Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
-                   size_t _buffer_size, std::chrono::milliseconds _rexmit_time, std::string _favorite_name)
+                   size_t _buffer_size, uint64_t _rexmit_time, std::string _favorite_name)
         : discover_address(_discover_address),
           lookup_socket_fd(_lookup_socket_fd),
           reply_socket_fd(_reply_socket_fd),
@@ -19,7 +24,10 @@ Receiver::Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, 
 Receiver::~Receiver() {
     delete[] buffer;
     // jeśli się nie uda, to nic z tym nie zrobimy
-    close(socket_fd);
+    close(lookup_socket_fd);
+    close(reply_socket_fd);
+    close(ui_socket_fd);
+    // close(data_socket_fd);
 }
 
 [[noreturn]] void Receiver::run() {
@@ -33,19 +41,93 @@ Receiver::~Receiver() {
 
 [[noreturn]] void Receiver::lookuper() {
     while (true) {
-        using namespace std::chrono_literals;
+        uint64_t time = time_since_epoch_ms();
+
+        {
+            std::lock_guard<std::mutex> lock{mut};
+            // TODO słabe
+            std::erase_if(stations, [time](const auto& item) {
+                auto const& [key, value] = item;
+                return value + 20 < time;
+            }); // TODO odtwarzanie innej
+        }
+
 
         char const *msg = "ZERO_SEVEN_COME_IN\n";
         ssize_t sent_bytes = sendto(lookup_socket_fd, msg, 19, 0, (struct sockaddr*) &discover_address, sizeof(discover_address));
         // TODO błąd?
 
-        std::this_thread::sleep_for(5000ms);
+        uint64_t time_diff = time_since_epoch_ms() - time;
+        if (time_diff > 5000) { // raczej nie powinno się wydarzyć
+            continue;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(5000 - time_diff));
     }
 }
 
 [[noreturn]] void Receiver::listener() {
     while (true) {
-        // TODO
+        struct sockaddr_in received_address;
+        socklen_t address_length = (socklen_t) sizeof(received_address);
+        char reply_buf[100];
+
+        ssize_t read_bytes = recvfrom(reply_socket_fd, reply_buf, 100, 0, (struct sockaddr *) &received_address, &address_length);
+        if (read_bytes < 0) {
+            continue;
+        }
+        reply_buf[read_bytes] = '\0';
+        if (std::regex_match(reply_buf, std::regex(R"(BOREWICZ_HERE [0-9\.]+ [0-9]+ [\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F]\\n)"))) {
+            std::string reply(reply_buf);
+            reply.erase(0, 14);
+            std::istringstream reply_stream(reply);
+            std::string multicast_address;
+            std::string port_string;
+            std::string name;
+
+            std::getline(reply_stream, multicast_address, ' ');
+            std::getline(reply_stream, port_string, ' ');
+            std::getline(reply_stream, name, ' ');
+
+            if (name.length() > 64) {
+                continue;
+            }
+
+            unsigned long port = std::stoul(port_string);
+            if (port > UINT16_MAX) {
+                continue;
+            }
+
+            struct ip_mreq ip_mreq;
+            ip_mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+            if (inet_aton(multicast_address.c_str(), &ip_mreq.imr_multiaddr) == 0) {
+                continue;
+            }
+
+            Station_Data station_data;
+            station_data.name = name;
+            station_data.ip_mreq = ip_mreq;
+            station_data.port = port;
+            station_data.address = received_address;
+            station_data.address_length = address_length;
+
+            std::lock_guard<std::mutex> lock{mut};
+            bool flag = true;
+            if (name == favorite_name) {
+                for (auto const &[key, value]: stations) {
+                    if (key.name == name) {
+                        flag = false;
+                    }
+                }
+                if (flag) {
+                    curr_station = station_data; // TODO porty
+                }
+            }
+            if (favorite_name.empty() && stations.empty()) {
+                curr_station = station_data;
+            }
+            stations[station_data] = time_since_epoch_ms();
+        }
     }
 }
 
@@ -58,7 +140,7 @@ Receiver::~Receiver() {
 
         uint64_t first_byte_num = 0;
         memcpy(&first_byte_num, &msg_buffer[8], 8);
-        first_byte_num = __builtin_bswap64(first_byte_num);
+        first_byte_num = be64toh(first_byte_num);
 
         // przyjmujemy niezmiennik:
         // next_to_receive - max_packets <= next_to_print <= next_to_receive
@@ -134,7 +216,7 @@ Receiver::~Receiver() {
             }
         }
         if (notify) {
-            cv.notify_one();
+            cv_writing.notify_one();
         }
     }
 }
@@ -148,7 +230,7 @@ Receiver::~Receiver() {
         // czeka na możliwość pisania
         {
             std::unique_lock<std::mutex> lock(mut);
-            cv.wait(lock, [this] { return writing; });
+            cv_writing.wait(lock, [this] { return writing; });
         }
         while (true) {
             {
@@ -158,7 +240,7 @@ Receiver::~Receiver() {
                 }
                 // czeka na następną paczkę lub na nową sesję
                 if (next_to_print == next_to_receive) {
-                    cv.wait(lock, [this]
+                    cv_writing.wait(lock, [this]
                     { return next_to_receive > next_to_print; });
                     // jeśli nie może pisać, to zaczęła się nowa sesja,
                     // więc powinien z powrotem poczekać na taką możliwość
@@ -216,18 +298,18 @@ bool Receiver::receive_message() {
     struct sockaddr_in received_address;
     socklen_t address_length = (socklen_t) sizeof(received_address);
 
-    ssize_t read_bytes = safe_recvfrom(socket_fd, &new_session_id, 8,
+    ssize_t read_bytes = safe_recvfrom(data_socket_fd, &new_session_id, 8,
                                        MSG_PEEK | MSG_TRUNC, (struct sockaddr *)
                                                &received_address, &address_length, 0);
 
-    new_session_id = __builtin_bswap64(new_session_id);
+    new_session_id = be64toh(new_session_id);
 
     // porzucamy paczkę, jeśli przyszła ze złego adresu lub jest ze
     // starszej sesji (przesyłamy po UDP, więc nie musimy wczytywać
     // całej)
     if (received_address.sin_addr.s_addr != sender_address
         || new_session_id < session_id) {
-        safe_recvfrom(socket_fd, &new_session_id, 8, 0, (struct sockaddr *)
+        safe_recvfrom(data_socket_fd, &new_session_id, 8, 0, (struct sockaddr *)
                 &received_address, &address_length, 0);
         return false;
     }
@@ -243,7 +325,7 @@ bool Receiver::receive_message() {
         }
         // budzimy piszącego, który może czekać na kolejną paczkę
         // writing jest false, więc piszący wróci na początek pętli
-        cv.notify_one();
+        cv_writing.notify_one();
         next_to_receive = 0;
         received_packets.clear();
         packet_size = (size_t) read_bytes - 16;
@@ -251,13 +333,13 @@ bool Receiver::receive_message() {
         // zainicjowaliśmy msg_buffer na NULL, więc możemy tak zrobić
         delete[] msg_buffer;
         msg_buffer = new byte_t[packet_size + 16];
-        safe_recvfrom(socket_fd, msg_buffer, packet_size + 16, 0,
+        safe_recvfrom(data_socket_fd, msg_buffer, packet_size + 16, 0,
                       (struct sockaddr *) &received_address,
                       &address_length, packet_size + 16);
         memcpy(&byte0, &msg_buffer[8], 8);
-        byte0 = __builtin_bswap64(byte0);
+        byte0 = be64toh(byte0);
     } else {
-        safe_recvfrom(socket_fd, msg_buffer, packet_size + 16, 0,
+        safe_recvfrom(data_socket_fd, msg_buffer, packet_size + 16, 0,
                       (struct sockaddr *) &received_address,
                       &address_length, packet_size + 16);
     }

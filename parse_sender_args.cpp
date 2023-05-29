@@ -54,8 +54,8 @@ Temp_Sender parse_sender_args(int argc, char *argv[]) {
     po::notify(vm);
 
     if (name.length() > 64 ||
-        !std::regex_match(name, std::regex(R"([\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F])"))) {
-        throw std::runtime_error("Invalid name");
+        !std::regex_match(name, std::regex(R"()"))) {
+        throw std::runtime_error("Invalid name");[\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F]
     }
 
     if (DATA_PORT < 0 || DATA_PORT > 65535) {

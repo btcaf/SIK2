@@ -25,6 +25,6 @@ Receiver Temp_Receiver::make_receiver() {
     int reply_socket_fd = bind_socket(ctrl_port);
     int ui_socket_fd = bind_socket(ui_port);
 
-    return {discover_address, lookup_socket_fd, reply_socket_fd, ui_socket_fd, buffer_size, std::chrono::milliseconds(rexmit_time),
+    return {discover_address, lookup_socket_fd, reply_socket_fd, ui_socket_fd, buffer_size, rexmit_time,
             favorite_name};
 }
