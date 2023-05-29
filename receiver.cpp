@@ -50,16 +50,17 @@ Receiver::~Receiver() {
         {
             std::lock_guard<std::mutex> lock{change_station_mut};
             // TODO słabe
-            bool set_new = !stations.empty() && stations[curr_station] + 20 < time;
+            bool set_new = !stations.empty() && stations[curr_station] + 20000 < time;
             std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
-                return value + 20 < time;
+                return value + 20000 < time;
             });
 
             if (receiving && stations.empty()) {
                 close(data_socket_fd);
                 receiving = false;
             } else if (set_new) {
+                // TODO domyślna
                 new_station(stations.begin()->first);
             }
         }
@@ -77,6 +78,7 @@ Receiver::~Receiver() {
     while (true) {
         struct sockaddr_in received_address;
         socklen_t address_length = (socklen_t) sizeof(received_address);
+
         char reply_buf[100];
 
         ssize_t read_bytes = recvfrom(reply_socket_fd, reply_buf, 100, 0, (struct sockaddr *) &received_address, &address_length);
@@ -84,6 +86,7 @@ Receiver::~Receiver() {
             continue;
         }
         reply_buf[read_bytes] = '\0';
+
         if (std::regex_match(reply_buf, std::regex(R"(BOREWICZ_HERE [0-9\.]+ [0-9]+ [\x21-\x7F][\x20-\x7F]*[\x21-\x7F]\n)"))) {
             std::string reply(reply_buf);
             reply.erase(0, 14);
