@@ -146,10 +146,11 @@ void Receiver::new_station(const Station_Data& station_data) {
     {
         std::unique_lock<std::mutex> lock(mut);
         cv_loop_start.wait(lock, [this] { return loop_start; });
-        curr_station = station_data;
         if (old_receiving) {
+            setsockopt(data_socket_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (void *) &curr_station.ip_mreq, sizeof(curr_station.ip_mreq));
             close(data_socket_fd);
         }
+        curr_station = station_data;
         data_socket_fd = bind_socket(station_data.port);
         struct timeval timeout;
         timeout.tv_sec = 1;
@@ -173,6 +174,9 @@ void Receiver::new_station(const Station_Data& station_data) {
             std::unique_lock<std::mutex> lock(mut);
             cv_receiving.wait(lock, [this] { return receiving; });
         }
+        // TODO błąd
+        setsockopt(data_socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *) &curr_station.ip_mreq, sizeof curr_station.ip_mreq);
+
         session_id = 0;
         while (true) {
             int retval = receive_message();
