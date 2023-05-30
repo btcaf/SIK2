@@ -5,10 +5,15 @@
 #include <string>
 #include <unistd.h>
 
+typedef enum Protocol {
+    UDP,
+    TCP
+} Protocol;
+
 /**
  * Zaadaptowana funkcja bind_socket() z zajęć laboratoryjnych.
  */
-int bind_socket(uint16_t port, bool reuse);
+int bind_socket(uint16_t port, Protocol protocol, bool reuse);
 
 /**
  * Zaadaptowana funkcja get_address(host, port) z zajęć laboratoryjnych.

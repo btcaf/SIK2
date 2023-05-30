@@ -7,9 +7,13 @@
 #include <cstring>
 #include <chrono>
 
-int bind_socket(uint16_t port, bool reuse) {
-    // zamykane po nieudanym bind() lub w destruktorze klasy Receiver
-    int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+int bind_socket(uint16_t port, Protocol protocol, bool reuse) {
+    int socket_fd;
+    if (protocol == UDP) {
+        socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    } else {
+        socket_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+    }
     if (socket_fd < 0) {
         throw std::runtime_error("Error creating socket");
     }

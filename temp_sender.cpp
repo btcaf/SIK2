@@ -31,7 +31,7 @@ Sender Temp_Sender::make_sender() {
         throw std::runtime_error("Error creating socket");
     }
 
-    int ctrl_socket_fd = bind_socket(ctrl_port, false);
+    int ctrl_socket_fd = bind_socket(ctrl_port, UDP, false);
 
     std::string reply_message = "BOREWICZ_HERE " + multicast_address_string +
             " " + std::to_string(data_port) + " " + name + "\n";

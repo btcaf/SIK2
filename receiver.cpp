@@ -10,6 +10,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <poll.h>
+#include <fcntl.h>
 
 Receiver::Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
                    size_t _buffer_size, uint64_t _rexmit_time, std::string _favorite_name)
@@ -31,11 +33,166 @@ Receiver::~Receiver() {
 }
 
 [[noreturn]] void Receiver::run() {
+    if (pipe(pipe_dsc) < 0) {
+        throw std::runtime_error("pipe() failed");
+    }
     std::thread lookuper{&Receiver::lookuper, this};
     std::thread listener{&Receiver::listener, this};
     std::thread data_receiver{&Receiver::data_receiver, this};
-    while (true) {
 
+    /**
+     * Zaadaptowany kod z zajęć laboratoryjnych.
+     */
+    /*char buf[CONNECTIONS][BUF_SIZE];
+    ssize_t buf_len[CONNECTIONS], buf_pos[CONNECTIONS];*/
+
+    struct pollfd poll_descriptors[CONNECTIONS];
+    /* Inicjujemy tablicę z gniazdami klientów, poll_descriptors[0] to gniazdo centrali */
+    for (auto & poll_descriptor : poll_descriptors) {
+        poll_descriptor.fd = -1;
+        poll_descriptor.events = POLLIN;
+        poll_descriptor.revents = 0;
+    }
+    size_t active_clients = 0;
+
+    /* gniazdo centrali */
+    poll_descriptors[0].fd = ui_socket_fd;
+
+    if (listen(poll_descriptors[0].fd, QUEUE_LENGTH) < 0) {
+        throw std::runtime_error("listen() failed");
+    }
+
+    poll_descriptors[1].fd = pipe_dsc[0];
+
+    while (true) {
+        ssize_t offset = 0;
+        for (auto & poll_descriptor : poll_descriptors) {
+            poll_descriptor.revents = 0;
+        }
+
+        int poll_status = poll(poll_descriptors, CONNECTIONS, TIMEOUT);
+        if (poll_status == -1) {
+            throw std::runtime_error("poll() failed");
+        } else if (poll_status > 0) {
+            if (poll_descriptors[0].revents & POLLIN) {
+                /* Przyjmuję nowe połączenie */
+                int client_fd = accept(poll_descriptors[0].fd, NULL, NULL);
+                if (client_fd < 0) {
+                    continue;
+                }
+
+                if (fcntl(client_fd, F_SETFL, O_NONBLOCK) < 0) {
+                    continue;
+                }
+
+                bool accepted = false;
+                for (size_t i = 2; i < CONNECTIONS; ++i) {
+                    if (poll_descriptors[i].fd == -1) {
+                        poll_descriptors[i].fd = client_fd;
+                        poll_descriptors[i].events = POLLIN;
+                        active_clients++;
+                        accepted = true;
+                        break;
+                    }
+                }
+                if (!accepted) {
+                    if (close(client_fd) < 0) {
+                        throw std::runtime_error("Error closing socket");
+                    }
+                    std::cerr << "Too many clients\n";
+                }
+            }
+            if (poll_descriptors[1].revents & POLLIN) {
+                char buf[update_message.length() + 1];
+                ssize_t received_bytes = read(poll_descriptors[1].fd, buf, update_message.length());
+                if (received_bytes < 0) {
+                    throw std::runtime_error("Receiving from pipe failed");
+                }
+                buf[received_bytes] = '\0';
+                if (strcmp(buf, update_message.c_str()) != 0) {
+                    throw std::runtime_error("Incorrect message read");
+                }
+            }
+            for (size_t i = 2; i < CONNECTIONS; ++i) {
+                if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & (POLLIN | POLLERR))) {
+                    char buf[3];
+                    ssize_t received_bytes = read(poll_descriptors[i].fd, buf, 3);
+                    if (received_bytes <= 0) { // błąd lub zakończenie połączenia
+                        if (close(poll_descriptors[i].fd) < 0) {
+                            throw std::runtime_error("Error closing socket");
+                        }
+                        poll_descriptors[i].fd = -1;
+                        active_clients -= 1;
+                    } else {
+                        if (received_bytes >= 3 && buf[0] == '\033' && buf[1] == '[') {
+                            if (buf[2] == 'A') {
+                                ++offset;
+                            } else if (buf[2] == 'B') {
+                                --offset;
+                            }
+                        }
+                        poll_descriptors[i].events = POLLOUT;
+                    }
+                }
+                // TODO nie wysyłaj jak nie trzeba
+                std::string ui_string = "------------------------------------------------------------------------\n\n";
+                ui_string += " SIK Radio\n\n";
+                ui_string += "------------------------------------------------------------------------\n\n";
+
+                {
+                    std::lock_guard<std::mutex> lock{change_station_mut};
+                    std::vector<Station_Data> stations_vec;
+                    size_t curr_index = 0;
+                    bool stop = false;
+                    for (auto const &[key, value]: stations) {
+                        stations_vec.push_back(key);
+                        if (key.name == curr_station.name &&
+                            key.port == curr_station.port &&
+                            key.ip_mreq.imr_multiaddr.s_addr ==
+                            curr_station.ip_mreq.imr_multiaddr.s_addr) {
+                            stop = true;
+                        }
+                        if (!stop) {
+                            ++curr_index;
+                        }
+                    }
+                    size_t size = stations_vec.size();
+
+                    Station_Data new_selected =
+                        stations_vec[
+                            ((static_cast<ssize_t>(curr_index) + offset)
+                            % size + size) % size];
+
+                    new_station(new_selected);
+
+                    for (auto const &station: stations_vec) {
+                        if (curr_station.name == station.name &&
+                            curr_station.port == station.port &&
+                            curr_station.ip_mreq.imr_multiaddr.s_addr ==
+                            station.ip_mreq.imr_multiaddr.s_addr) {
+                            ui_string += " > ";
+                        }
+                        ui_string += station.name;
+                        ui_string += "\n\n";
+                    }
+                }
+
+                if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & POLLOUT)) {
+                    // TODO pisz co innego
+                    ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
+                    if (sent_bytes < 0) { // zamknij w przypadku błędu zapisu
+                        if (close(poll_descriptors[i].fd) < 0) {
+                            throw std::runtime_error("Error closing socket");
+                        }
+                        poll_descriptors[i].fd = -1;
+                        active_clients -= 1;
+                    }
+                    else {
+                        poll_descriptors[i].events = POLLIN; /* Przełączenie na czytanie */
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -56,12 +213,11 @@ Receiver::~Receiver() {
         {
             std::lock_guard<std::mutex> lock{mut};
             receiving_curr_value = receiving;
-            curr_station_curr_value = curr_station;
         }
         {
             std::lock_guard<std::mutex> lock{change_station_mut};
             bool set_new = receiving_curr_value && !stations.empty() &&
-                    stations[curr_station_curr_value] + STATION_TIMEOUT < time;
+                    stations[curr_station] + STATION_TIMEOUT < time;
 
             std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
@@ -81,6 +237,11 @@ Receiver::~Receiver() {
                     }
                 }
                 new_station(new_stat);
+            }
+            ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
+                                          update_message.length());
+            if (written_bytes < 0 || (size_t) written_bytes < update_message.length()) {
+                throw std::runtime_error("Writing to pipe failed");
             }
         }
 
@@ -160,6 +321,11 @@ Receiver::~Receiver() {
                 new_station(station_data);
             }
             stations[station_data] = time_since_epoch_ms();
+            ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
+                                          update_message.length());
+            if (written_bytes < 0 || (size_t) written_bytes < update_message.length()) {
+                throw std::runtime_error("Writing to pipe failed");
+            }
         }
     }
 }
@@ -181,9 +347,9 @@ void Receiver::new_station(const Station_Data& station_data) {
             }
         }
         curr_station = station_data;
-        data_socket_fd = bind_socket(station_data.port, false);
+        data_socket_fd = bind_socket(station_data.port, UDP, false);
         struct timeval timeout;
-        timeout.tv_sec = 1;
+        timeout.tv_sec = 1; // TODO kurwa mać
         timeout.tv_usec = 0;
         if (setsockopt(data_socket_fd, SOL_SOCKET, SO_RCVTIMEO,
                        (const char *) &timeout, sizeof timeout) < 0) {

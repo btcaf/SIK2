@@ -86,6 +86,10 @@ private:
     static const uint64_t STATION_TIMEOUT = 20000;
     static const size_t REPLY_BUFSIZE = 100;
     static const size_t REPLY_HEADER_LEN = 14;
+    static const size_t CONNECTIONS = 10;
+    static const size_t QUEUE_LENGTH = 5;
+    static const size_t BUF_SIZE = 100;
+    static const uint64_t TIMEOUT = 5000;
 
     /* wyszukiwanie stacji */
     const struct sockaddr_in discover_address;
@@ -94,6 +98,8 @@ private:
 
     /* TODO opis */
     int ui_socket_fd;
+    int pipe_dsc[2];
+    const std::string update_message = "UPDATE";
 
     std::map<Station_Data, uint64_t, station_data_cmp> stations;
 
