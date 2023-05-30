@@ -94,6 +94,7 @@ Receiver::~Receiver() {
                         active_clients++;
                         accepted = true;
                         first_time[i] = true;
+                        write(client_fd, "\xff\xfd\x22\xff\xfa\x22\x01\x00\xff\xf0", 10); // TODO error
                         break;
                     }
                 }
@@ -138,16 +139,6 @@ Receiver::~Receiver() {
                     }
                 }
             }
-            if (!update || offset == 0) {
-                continue;
-            }
-
-            for (size_t i = 2; i < CONNECTIONS; ++i) {
-                if (poll_descriptors[i].fd != -1) {
-                    poll_descriptors[i].events = POLLOUT;
-                }
-            }
-
 
             std::string ui_string = "\e[1;1H\e[2J";
             ui_string += "------------------------------------------------------------------------\n\n";
@@ -200,7 +191,7 @@ Receiver::~Receiver() {
                 }
             }
             for (size_t i = 2; i < CONNECTIONS; ++i) {
-                if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & POLLOUT)) {
+                if (poll_descriptors[i].fd != -1) {
                     if (update || offset != 0) {
                         first_time[i] = false;
                         ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
@@ -214,7 +205,6 @@ Receiver::~Receiver() {
                     }
                     if (first_time[i]) {
                         first_time[i] = false;
-                        // TODO disable buffer
                         ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
                         if (sent_bytes < 0) { // zamknij w przypadku błędu zapisu
                             if (close(poll_descriptors[i].fd) < 0) {
@@ -224,9 +214,6 @@ Receiver::~Receiver() {
                             active_clients -= 1;
                         }
                     }
-                }
-                if (poll_descriptors[i].fd != -1) {
-                    poll_descriptors[i].events = POLLIN;
                 }
             }
         }
