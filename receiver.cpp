@@ -399,6 +399,9 @@ void Receiver::lookuper_wrap() {
                 new_station(station_data);
                 update = true;
             }
+            if (!stations.contains(station_data)) {
+                update = true;
+            }
             stations[station_data] = time_since_epoch_ms();
             if (update) {
                 ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
