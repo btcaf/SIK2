@@ -254,7 +254,7 @@ Receiver::~Receiver() {
         }
         cv_writing.notify_one();
         cv_receiving.notify_one();
-        cv_loop_start.notify_one(); // TODO typ na recvfrom()
+        cv_loop_start.notify_one();
         throw;
     }
 }
@@ -290,10 +290,10 @@ void Receiver::handle_main_exception() {
             bool set_new = receiving_curr_value && !stations.empty() &&
                     stations[curr_station] + STATION_TIMEOUT < time;
 
-            std::erase_if(stations, [time](const auto& item) {
+            bool update = std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
                 return value + STATION_TIMEOUT < time;
-            });
+            }) > 0;
 
             if (receiving_curr_value && stations.empty()) {
                 Station_Data empty_station;
@@ -309,10 +309,12 @@ void Receiver::handle_main_exception() {
                 }
                 new_station(new_stat);
             }
-            ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
-                                          update_message.length());
-            if (written_bytes < 0 || (size_t) written_bytes < update_message.length()) {
-                throw std::runtime_error("Writing to pipe failed");
+            if (update) {
+                ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
+                                              update_message.length());
+                if (written_bytes < 0 || (size_t) written_bytes < update_message.length()) {
+                    throw std::runtime_error("Writing to pipe failed");
+                }
             }
         }
 
@@ -393,8 +395,9 @@ void Receiver::lookuper_wrap() {
             station_data.address_length = address_length;
 
             std::lock_guard<std::mutex> lock{change_station_mut};
-            bool flag = true;
+            bool update = false;
             if (name == favorite_name) {
+                bool flag = true;
                 for (auto const &[key, value]: stations) {
                     if (key.name == name) {
                         flag = false;
@@ -402,16 +405,20 @@ void Receiver::lookuper_wrap() {
                 }
                 if (flag) {
                     new_station(station_data);
+                    update = true;
                 }
             }
             if (favorite_name.empty() && stations.empty()) {
                 new_station(station_data);
+                update = true;
             }
             stations[station_data] = time_since_epoch_ms();
-            ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
-                                          update_message.length());
-            if (written_bytes < 0 || (size_t) written_bytes < update_message.length()) {
-                throw std::runtime_error("Writing to pipe failed");
+            if (update) {
+                ssize_t written_bytes = write(pipe_dsc[1], update_message.c_str(),
+                                              update_message.length());
+                if (written_bytes < 0 || (size_t) written_bytes < update_message.length()) {
+                    throw std::runtime_error("Writing to pipe failed");
+                }
             }
         }
     }
