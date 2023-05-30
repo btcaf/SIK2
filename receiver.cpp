@@ -314,11 +314,17 @@ void Receiver::lookuper_wrap() {
 
         char reply_buf[REPLY_BUFSIZE];
 
-        ssize_t read_bytes = safe_recvfrom(reply_socket_fd,
+        ssize_t read_bytes = recvfrom(reply_socket_fd,
                                            reply_buf, REPLY_BUFSIZE, 0,
                                            (struct sockaddr *)
                                                    &received_address,
-                                                   &address_length, 0);
+                                                   &address_length);
+        if (read_bytes < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            }
+            throw std::runtime_error("recvfrom() failed");
+        }
         reply_buf[read_bytes] = '\0';
 
         if (std::regex_match(reply_buf, std::regex(R"(BOREWICZ_HERE [0-9\.]+ [0-9]+ [\x21-\x7F][\x20-\x7F]*[\x21-\x7F]\n)"))) {

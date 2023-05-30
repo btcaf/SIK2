@@ -26,7 +26,18 @@ Receiver Temp_Receiver::make_receiver() {
     if (setsockopt(lookup_socket_fd, SOL_SOCKET, SO_BROADCAST, &optval, sizeof(optval))) {
         throw std::runtime_error("Error configuring socket");
     }
+
     int reply_socket_fd = bind_socket(ctrl_port, UDP, true);
+    struct timeval timeout;
+
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(reply_socket_fd, SOL_SOCKET, SO_RCVTIMEO,
+                     (const char *) &timeout, sizeof timeout) < 0) {
+        throw std::runtime_error("Error configuring socket");
+    }
+
     int ui_socket_fd = bind_socket(ui_port, TCP, false);
 
     return {discover_address, lookup_socket_fd, reply_socket_fd, ui_socket_fd, buffer_size, rexmit_time,
