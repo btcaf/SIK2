@@ -36,15 +36,15 @@ Receiver::~Receiver() {
     /**
      * Zaadaptowany kod z zajęć laboratoryjnych.
      */
-    /*char buf[CONNECTIONS][BUF_SIZE];
-    ssize_t buf_len[CONNECTIONS], buf_pos[CONNECTIONS];*/
+    bool first_time[CONNECTIONS];
 
     struct pollfd poll_descriptors[CONNECTIONS];
     /* Inicjujemy tablicę z gniazdami klientów, poll_descriptors[0] to gniazdo centrali */
-    for (auto & poll_descriptor : poll_descriptors) {
-        poll_descriptor.fd = -1;
-        poll_descriptor.events = POLLIN;
-        poll_descriptor.revents = 0;
+    for (size_t i = 0; i < CONNECTIONS; ++i) {
+        poll_descriptors[i].fd = -1;
+        poll_descriptors[i].events = POLLIN;
+        poll_descriptors[i].revents = 0;
+        first_time[i] = false;
     }
     size_t active_clients = 0;
 
@@ -93,6 +93,7 @@ Receiver::~Receiver() {
                         poll_descriptors[i].events = POLLIN;
                         active_clients++;
                         accepted = true;
+                        first_time[i] = true;
                         break;
                     }
                 }
@@ -200,17 +201,32 @@ Receiver::~Receiver() {
             }
             for (size_t i = 2; i < CONNECTIONS; ++i) {
                 if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & POLLOUT)) {
-                    ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
-                    if (sent_bytes < 0) { // zamknij w przypadku błędu zapisu
-                        if (close(poll_descriptors[i].fd) < 0) {
-                            throw std::runtime_error("Error closing socket");
+                    if (update || offset != 0) {
+                        first_time[i] = false;
+                        ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
+                        if (sent_bytes < 0) { // zamknij w przypadku błędu zapisu
+                            if (close(poll_descriptors[i].fd) < 0) {
+                                throw std::runtime_error("Error closing socket");
+                            }
+                            poll_descriptors[i].fd = -1;
+                            active_clients -= 1;
                         }
-                        poll_descriptors[i].fd = -1;
-                        active_clients -= 1;
                     }
-                    else {
-                        poll_descriptors[i].events = POLLIN; /* Przełączenie na czytanie */
+                    if (first_time[i]) {
+                        first_time[i] = false;
+                        // TODO disable buffer
+                        ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
+                        if (sent_bytes < 0) { // zamknij w przypadku błędu zapisu
+                            if (close(poll_descriptors[i].fd) < 0) {
+                                throw std::runtime_error("Error closing socket");
+                            }
+                            poll_descriptors[i].fd = -1;
+                            active_clients -= 1;
+                        }
                     }
+                }
+                if (poll_descriptors[i].fd != -1) {
+                    poll_descriptors[i].events = POLLIN;
                 }
             }
         }
