@@ -32,13 +32,14 @@ Receiver::~Receiver() {
     // close(data_socket_fd);
 }
 
-[[noreturn]] void Receiver::run() {
+[[noreturn]] void Receiver::run_base() {
     if (pipe(pipe_dsc) < 0) {
         throw std::runtime_error("pipe() failed");
     }
-    std::thread lookuper{&Receiver::lookuper, this};
-    std::thread listener{&Receiver::listener, this};
-    std::thread data_receiver{&Receiver::data_receiver, this};
+    std::jthread lookuper{&Receiver::lookuper_wrap, this};
+    std::jthread listener{&Receiver::listener_wrap, this};
+    std::jthread data_receiver{&Receiver::data_receiver_wrap, this};
+    std::jthread writer{&Receiver::writer_wrap, this};
 
     /**
      * Zaadaptowany kod z zajęć laboratoryjnych.
@@ -65,6 +66,12 @@ Receiver::~Receiver() {
     poll_descriptors[1].fd = pipe_dsc[0];
 
     while (true) {
+        {
+            std::lock_guard<std::mutex> lock{mut};
+            if (exception_to_throw) {
+                std::rethrow_exception(exception_to_throw);
+            }
+        }
         ssize_t offset = 0;
         bool activated = false;
         for (auto & poll_descriptor : poll_descriptors) {
@@ -205,8 +212,24 @@ Receiver::~Receiver() {
     }
 }
 
+[[noreturn]] void Receiver::run() {
+    try {
+        run_base();
+    } catch (std::exception &e) {
+        main_exception = true;
+        throw;
+    }
+}
+
+void Receiver::handle_main_exception() {
+    if (main_exception) {
+        throw std::runtime_error("Main exception");
+    }
+}
+
 [[noreturn]] void Receiver::lookuper() {
     while (true) {
+        handle_main_exception();
         uint64_t time = time_since_epoch_ms();
 
         std::string msg = "ZERO_SEVEN_COME_IN\n";
@@ -264,8 +287,18 @@ Receiver::~Receiver() {
     }
 }
 
+void Receiver::lookuper_wrap() {
+    try {
+        lookuper();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
+    }
+}
+
 [[noreturn]] void Receiver::listener() {
     while (true) {
+        handle_main_exception();
         struct sockaddr_in received_address;
         socklen_t address_length = (socklen_t) sizeof(received_address);
 
@@ -339,6 +372,15 @@ Receiver::~Receiver() {
     }
 }
 
+void Receiver::listener_wrap() {
+    try {
+        listener();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
+    }
+}
+
 void Receiver::new_station(const Station_Data& station_data) {
     {
         std::unique_lock<std::mutex> lock(mut);
@@ -370,8 +412,8 @@ void Receiver::new_station(const Station_Data& station_data) {
 }
 
 [[noreturn]] void Receiver::data_receiver() {
-    std::thread writer{&Receiver::writer, this};
     while (true) {
+        handle_main_exception();
         {
             std::lock_guard<std::mutex> lock{mut};
             loop_start = true;
@@ -389,6 +431,7 @@ void Receiver::new_station(const Station_Data& station_data) {
 
         session_id = 0;
         while (true) {
+            handle_main_exception();
             int retval = receive_message();
             if (retval == -1) {
                 break;
@@ -481,18 +524,29 @@ void Receiver::new_station(const Station_Data& station_data) {
     }
 }
 
+void Receiver::data_receiver_wrap() {
+    try {
+        data_receiver();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
+    }
+}
+
 /**
  * Kod wątku wypisującego dane binarne na standardowe wyjście.
  */
 [[noreturn]] void Receiver::writer() {
 
     while (true) {
+        handle_main_exception();
         // czeka na możliwość pisania
         {
             std::unique_lock<std::mutex> lock(mut);
             cv_writing.wait(lock, [this] { return writing; });
         }
         while (true) {
+            handle_main_exception();
             {
                 std::unique_lock<std::mutex> lock(mut);
                 if (!writing) {
@@ -522,6 +576,15 @@ void Receiver::new_station(const Station_Data& station_data) {
                 ++next_to_print;
             }
         }
+    }
+}
+
+void Receiver::writer_wrap() {
+    try {
+        writer();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
     }
 }
 

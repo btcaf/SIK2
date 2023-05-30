@@ -44,6 +44,10 @@ public:
 
 private:
 
+    [[noreturn]] void run_base();
+
+    void handle_main_exception();
+
     /**
      * Kod wątku wysyłającego komunikaty LOOKUP.
      */
@@ -65,6 +69,11 @@ private:
      * Kod wątku wypisującego dane binarne na standardowe wyjście.
      */
     [[noreturn]] void writer();
+
+    void lookuper_wrap();
+    void listener_wrap();
+    void data_receiver_wrap();
+    void writer_wrap();
 
     void print_missing_packets(uint64_t curr_packet);
 
@@ -90,6 +99,9 @@ private:
     static const size_t QUEUE_LENGTH = 5;
     static const size_t BUF_SIZE = 100;
     static const uint64_t TIMEOUT = 5000;
+
+    std::atomic<bool> main_exception = false;
+    std::exception_ptr exception_to_throw = nullptr;
 
     /* wyszukiwanie stacji */
     const struct sockaddr_in discover_address;
