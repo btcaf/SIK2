@@ -108,11 +108,17 @@ void Sender::listener() {
                 throw std::runtime_error("Error configuring socket");
             }
 
-            ssize_t read_bytes = safe_recvfrom(ctrl_socket_fd, message_buf,
+            ssize_t read_bytes = recvfrom(ctrl_socket_fd, message_buf,
                                           BUFFER_SIZE,
                                           0, (struct sockaddr *)
                                                   &receiver_address,
-                                                  &address_length, 0);
+                                                  &address_length);
+            if (read_bytes < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    throw std::runtime_error("recvfrom() failed");
+                }
+                continue;
+            }
 
             message_buf[read_bytes] = '\0';
 
