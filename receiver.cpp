@@ -216,6 +216,19 @@ Receiver::~Receiver() {
         gui_handler();
     } catch (std::exception &e) {
         main_exception = true;
+        {
+            std::lock_guard<std::mutex> lock{mut};
+            writing = true;
+            loop_start = true;
+            receiving = true;
+            next_to_print = 0;
+            cv_writing.notify_one();
+            cv_receiving.notify_one();
+            cv_loop_start.notify_one();
+            if (shutdown(reply_socket_fd, SHUT_RD) < 0) {
+                std::cerr << "aaaaaaaaaaaaaaaaaaaaaaaaaa";
+            }
+        }
         throw;
     }
 }
@@ -243,6 +256,7 @@ void Receiver::handle_main_exception() {
         Station_Data curr_station_curr_value;
         {
             std::lock_guard<std::mutex> lock{mut};
+            handle_main_exception();
             receiving_curr_value = receiving;
         }
         {
@@ -383,6 +397,7 @@ void Receiver::listener_wrap() {
 void Receiver::new_station(const Station_Data& station_data) {
     {
         std::unique_lock<std::mutex> lock(mut);
+        handle_main_exception();
         bool old_receiving = receiving;
         receiving = false;
         cv_loop_start.wait(lock, [this] { return loop_start; });
