@@ -32,15 +32,7 @@ Receiver::~Receiver() {
     // close(data_socket_fd);
 }
 
-[[noreturn]] void Receiver::run_base() {
-    if (pipe(pipe_dsc) < 0) {
-        throw std::runtime_error("pipe() failed");
-    }
-    std::jthread lookuper{&Receiver::lookuper_wrap, this};
-    std::jthread listener{&Receiver::listener_wrap, this};
-    std::jthread data_receiver{&Receiver::data_receiver_wrap, this};
-    std::jthread writer{&Receiver::writer_wrap, this};
-
+[[noreturn]] void Receiver::gui_handler() {
     /**
      * Zaadaptowany kod z zajęć laboratoryjnych.
      */
@@ -213,8 +205,15 @@ Receiver::~Receiver() {
 }
 
 [[noreturn]] void Receiver::run() {
+    if (pipe(pipe_dsc) < 0) {
+        throw std::runtime_error("pipe() failed");
+    }
+    std::jthread lookuper{&Receiver::lookuper_wrap, this};
+    std::jthread listener{&Receiver::listener_wrap, this};
+    std::jthread data_receiver{&Receiver::data_receiver_wrap, this};
+    std::jthread writer{&Receiver::writer_wrap, this};
     try {
-        run_base();
+        gui_handler();
     } catch (std::exception &e) {
         main_exception = true;
         throw;

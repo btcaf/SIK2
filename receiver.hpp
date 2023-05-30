@@ -44,7 +44,7 @@ public:
 
 private:
 
-    [[noreturn]] void run_base();
+    [[noreturn]] void gui_handler();
 
     void handle_main_exception();
 
