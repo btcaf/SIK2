@@ -66,6 +66,7 @@ Receiver::~Receiver() {
 
     while (true) {
         ssize_t offset = 0;
+        bool activated = false;
         for (auto & poll_descriptor : poll_descriptors) {
             poll_descriptor.revents = 0;
         }
@@ -126,9 +127,10 @@ Receiver::~Receiver() {
                     } else {
                         if (received_bytes >= 3 && buf[0] == '\033' && buf[1] == '[') {
                             if (buf[2] == 'A') {
-                                ++offset;
-                            } else if (buf[2] == 'B') {
                                 --offset;
+                            } else if (buf[2] == 'B') {
+                                ++offset;
+                                activated = true;
                             }
                         }
                         poll_descriptors[i].events = POLLOUT;
@@ -156,14 +158,20 @@ Receiver::~Receiver() {
                             ++curr_index;
                         }
                     }
-                    size_t size = stations_vec.size();
+                    if (curr_station.name.empty()) {
+                        if (activated && !stations_vec.empty()) {
+                            new_station(stations_vec[0]);
+                        }
+                    } else {
+                        size_t size = stations_vec.size();
 
-                    Station_Data new_selected =
-                        stations_vec[
-                            ((static_cast<ssize_t>(curr_index) + offset)
-                            % size + size) % size];
+                        Station_Data new_selected =
+                                stations_vec[
+                                        ((static_cast<ssize_t>(curr_index) + offset)
+                                         % size + size) % size];
 
-                    new_station(new_selected);
+                        new_station(new_selected);
+                    }
 
                     for (auto const &station: stations_vec) {
                         if (curr_station.name == station.name &&
