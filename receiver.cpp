@@ -222,10 +222,10 @@ Receiver::~Receiver() {
             loop_start = true;
             receiving = true;
             next_to_print = 0;
-            cv_writing.notify_one();
-            cv_receiving.notify_one();
-            cv_loop_start.notify_one(); // TODO typ na recvfrom()
         }
+        cv_writing.notify_one();
+        cv_receiving.notify_one();
+        cv_loop_start.notify_one(); // TODO typ na recvfrom()
         throw;
     }
 }
