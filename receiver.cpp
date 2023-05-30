@@ -66,6 +66,7 @@ Receiver::~Receiver() {
         }
         ssize_t offset = 0;
         bool activated = false;
+        bool update = false;
         for (auto & poll_descriptor : poll_descriptors) {
             poll_descriptor.revents = 0;
         }
@@ -112,6 +113,7 @@ Receiver::~Receiver() {
                 if (strcmp(buf, update_message.c_str()) != 0) {
                     throw std::runtime_error("Incorrect message read");
                 }
+                update = true;
             }
             for (size_t i = 2; i < CONNECTIONS; ++i) {
                 if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & (POLLIN | POLLERR))) {
@@ -132,61 +134,72 @@ Receiver::~Receiver() {
                                 activated = true;
                             }
                         }
-                        poll_descriptors[i].events = POLLOUT;
                     }
                 }
-                // TODO nie wysyłaj jak nie trzeba
-                std::string ui_string = "\e[1;1H\e[2J";
-                ui_string += "------------------------------------------------------------------------\n\n";
-                ui_string += " SIK Radio\n\n";
-                ui_string += "------------------------------------------------------------------------\n\n";
+            }
+            if (!update || offset == 0) {
+                continue;
+            }
 
-                {
-                    std::lock_guard<std::mutex> lock{change_station_mut};
-                    std::vector<Station_Data> stations_vec;
-                    size_t curr_index = 0;
-                    bool stop = false;
-                    for (auto const &[key, value]: stations) {
-                        stations_vec.push_back(key);
-                        if (key.name == curr_station.name &&
-                            key.port == curr_station.port &&
-                            key.ip_mreq.imr_multiaddr.s_addr ==
-                            curr_station.ip_mreq.imr_multiaddr.s_addr) {
-                            stop = true;
-                        }
-                        if (!stop) {
-                            ++curr_index;
-                        }
+            for (size_t i = 2; i < CONNECTIONS; ++i) {
+                if (poll_descriptors[i].fd != -1) {
+                    poll_descriptors[i].events = POLLOUT;
+                }
+            }
+
+
+            std::string ui_string = "\e[1;1H\e[2J";
+            ui_string += "------------------------------------------------------------------------\n\n";
+            ui_string += " SIK Radio\n\n";
+            ui_string += "------------------------------------------------------------------------\n\n";
+
+            {
+                std::lock_guard<std::mutex> lock{change_station_mut};
+                std::vector<Station_Data> stations_vec;
+                size_t curr_index = 0;
+                bool stop = false;
+                for (auto const &[key, value]: stations) {
+                    stations_vec.push_back(key);
+                    if (key.name == curr_station.name &&
+                        key.port == curr_station.port &&
+                        key.ip_mreq.imr_multiaddr.s_addr ==
+                        curr_station.ip_mreq.imr_multiaddr.s_addr) {
+                        stop = true;
                     }
-                    if (curr_station.name.empty()) {
-                        if (activated && !stations_vec.empty()) {
-                            new_station(stations_vec[0]);
-                        }
-                    } else {
-                        size_t size = stations_vec.size();
+                    if (!stop) {
+                        ++curr_index;
+                    }
+                }
+                if (curr_station.name.empty()) {
+                    if (activated && !stations_vec.empty()) {
+                        new_station(stations_vec[0]);
+                    }
+                } else {
+                    size_t size = stations_vec.size();
 
-                        Station_Data new_selected =
-                                stations_vec[
-                                        ((static_cast<ssize_t>(curr_index) + offset)
-                                         % size + size) % size];
+                    Station_Data new_selected =
+                            stations_vec[
+                                    ((static_cast<ssize_t>(curr_index) + offset)
+                                     % size + size) % size];
 
+                    if (offset % size != 0) {
                         new_station(new_selected);
                     }
-
-                    for (auto const &station: stations_vec) {
-                        if (curr_station.name == station.name &&
-                            curr_station.port == station.port &&
-                            curr_station.ip_mreq.imr_multiaddr.s_addr ==
-                            station.ip_mreq.imr_multiaddr.s_addr) {
-                            ui_string += " > ";
-                        }
-                        ui_string += station.name;
-                        ui_string += "\n\n";
-                    }
                 }
 
+                for (auto const &station: stations_vec) {
+                    if (curr_station.name == station.name &&
+                        curr_station.port == station.port &&
+                        curr_station.ip_mreq.imr_multiaddr.s_addr ==
+                        station.ip_mreq.imr_multiaddr.s_addr) {
+                        ui_string += " > ";
+                    }
+                    ui_string += station.name;
+                    ui_string += "\n\n";
+                }
+            }
+            for (size_t i = 2; i < CONNECTIONS; ++i) {
                 if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & POLLOUT)) {
-                    // TODO pisz co innego
                     ssize_t sent_bytes = write(poll_descriptors[i].fd, ui_string.c_str(), ui_string.length());
                     if (sent_bytes < 0) { // zamknij w przypadku błędu zapisu
                         if (close(poll_descriptors[i].fd) < 0) {
