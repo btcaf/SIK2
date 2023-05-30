@@ -47,22 +47,34 @@ Receiver::~Receiver() {
         sendto(lookup_socket_fd, msg, 19, 0, (struct sockaddr*) &discover_address, sizeof(discover_address));
         // TODO błąd?
 
+        bool receiving_curr_value;
+        Station_Data curr_station_curr_value;
+        {
+            std::lock_guard<std::mutex> lock{mut};
+            receiving_curr_value = receiving;
+            curr_station_curr_value = curr_station;
+        }
         {
             std::lock_guard<std::mutex> lock{change_station_mut};
-            // TODO słabe
-            bool set_new = receiving && !stations.empty() && stations[curr_station] + 20000 < time;
+            bool set_new = receiving_curr_value && !stations.empty() && stations[curr_station_curr_value] + 20000 < time;
             std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
                 return value + 20000 < time;
             });
 
-            if (receiving && stations.empty()) {
-                close(data_socket_fd);
-                receiving = false;
-                curr_station.name = "";
+            if (receiving_curr_value && stations.empty()) {
+                Station_Data empty_station;
+                empty_station.name = "";
+                new_station(empty_station);
             } else if (set_new) {
-                // TODO domyślna
-                new_station(stations.begin()->first);
+                Station_Data new_stat = stations.begin()->first;
+                for (auto const &[key, value]: stations) {
+                    if (key.name == favorite_name) {
+                        new_stat = key;
+                        break;
+                    }
+                }
+                new_station(new_stat);
             }
         }
 

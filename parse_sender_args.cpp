@@ -54,7 +54,8 @@ Temp_Sender parse_sender_args(int argc, char *argv[]) {
     po::notify(vm);
 
     if (name.length() > 64 ||
-        !std::regex_match(name, std::regex(R"([\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F])"))) {
+        !std::regex_match(name,
+            std::regex(R"([\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F])"))) {
         throw std::runtime_error("Invalid name");
     }
 
@@ -74,11 +75,11 @@ Temp_Sender parse_sender_args(int argc, char *argv[]) {
         throw std::runtime_error("Invalid queue size");
     }
 
-    if (RTIME <= 0 || RTIME > SIZE_MAX) { // TODO sus
+    if (RTIME <= 0 || RTIME > UINT64_MAX) {
         throw std::runtime_error("Invalid time");
     }
 
-    return {static_cast<uint16_t>(DATA_PORT), static_cast<size_t>(PSIZE), name, multicast_address,
-            static_cast<uint16_t>(CTRL_PORT), static_cast<size_t>(FSIZE),
-            static_cast<uint64_t>(RTIME)};
+    return {static_cast<uint16_t>(DATA_PORT), static_cast<size_t>(PSIZE),
+            name, multicast_address, static_cast<uint16_t>(CTRL_PORT),
+            static_cast<size_t>(FSIZE), static_cast<uint64_t>(RTIME)};
 }

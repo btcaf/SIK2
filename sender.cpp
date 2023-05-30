@@ -1,4 +1,5 @@
 #include "sender.hpp"
+#include "common.hpp"
 
 #include <unistd.h>
 #include <cstring>
@@ -9,7 +10,7 @@
 
 Sender::Sender(size_t _packet_size,
                struct sockaddr_in _receiver_address, int _data_socket_fd,
-               int _ctrl_socket_fd, size_t queue_size, std::chrono::milliseconds rexmit_time,
+               int _ctrl_socket_fd, size_t queue_size, uint64_t rexmit_time,
                std::string _reply_message)
         : packet_size(_packet_size),
           multicast_address(_receiver_address),
@@ -40,19 +41,21 @@ void Sender::run() {
             be_first_byte_num = htobe64(packet_num);
         }
 
-        memcpy(packet_buf, &be_session_id, 8);
-        memcpy(&packet_buf[8], &be_first_byte_num, 8);
-        size_t size = std::fread(&packet_buf[16], 1, packet_size, stdin);
+        memcpy(packet_buf, &be_session_id, HEADER_ELEMENT_SIZE);
+        memcpy(&packet_buf[HEADER_ELEMENT_SIZE], &be_first_byte_num,
+               HEADER_ELEMENT_SIZE);
+        size_t size = std::fread(&packet_buf[HEADER_SIZE], sizeof(byte_t),
+                                 packet_size, stdin);
         if (size < packet_size) {
             break;
         }
 
-        send_message();
+        send_message(packet_buf);
 
         {
             std::lock_guard<std::mutex> lock{mut};
             for (size_t i = 0; i < packet_size; ++i) {
-                fifo.push_back(packet_buf[16 + i]);
+                fifo.push_back(packet_buf[HEADER_SIZE + i]);
             }
             packet_num += packet_size;
         }
@@ -62,25 +65,26 @@ void Sender::run() {
     listener.join();
 }
 
-void Sender::send_message() {
-    ssize_t sent_bytes = sendto(data_socket_fd, packet_buf, packet_size + 16, 0,
+void Sender::send_message(byte_t *buffer) {
+    ssize_t sent_bytes = sendto(data_socket_fd, buffer, full_packet_size, 0,
                                 (struct sockaddr *) (&multicast_address),
                                 sizeof(multicast_address));
 
-    if (sent_bytes < 0 || (size_t) sent_bytes < packet_size + 16) {
-        throw std::runtime_error("sendto() failed"); // TODO mega sus
+    if (sent_bytes < 0 || (size_t) sent_bytes < full_packet_size) {
+        throw std::runtime_error("sendto() failed");
     }
 }
 
 void Sender::listener() {
-    // puść wysyłacze
     std::thread rexmit_sender{&Sender::rexmit_sender, this};
     std::thread reply_sender{&Sender::reply_sender, this};
     while (true) {
-        // sprawdź czy nie kończyć, jeśli tak to wait na wysyłacze
+        // sprawdź, czy nie kończyć, jeśli tak to poczekaj na wysyłające wątki
         if (is_main_finished) {
             is_listener_finished = true;
 
+            // przekazujemy dane do kolejki, aby odblokować potencjalnie
+            // czekające wątki
             struct sockaddr_in dummy_address;
             memset(&dummy_address, 0, sizeof(dummy_address));
             reply_queue.push(dummy_address);
@@ -91,43 +95,45 @@ void Sender::listener() {
             return;
         }
 
-        auto start_time = std::chrono::steady_clock::now();
-        // TODO while czas < rexmit_time
+        uint64_t start_time = time_since_epoch_ms();
         while (true) {
-            auto curr_time = std::chrono::steady_clock::now();
+            uint64_t curr_time = time_since_epoch_ms();
             if (curr_time > start_time + rexmit_time) {
                 break;
             }
-            // TODO odbierz
+
             struct sockaddr_in receiver_address;
             socklen_t address_length = (socklen_t) sizeof(receiver_address);
 
             struct timeval timeout;
-            auto to_ms =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                            start_time + rexmit_time - curr_time
-                    );;
-            timeout.tv_sec = to_ms.count() / 1000;
-            timeout.tv_usec = (to_ms.count() % 1000) * 1000;
+            uint64_t timeout_ms = start_time + rexmit_time - curr_time;
 
-            // TODO może błąd
-            setsockopt(ctrl_socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &timeout, sizeof timeout);
+            timeout.tv_sec = timeout_ms / 1000;
+            timeout.tv_usec = (timeout_ms % 1000) * 1000;
 
-            ssize_t read_bytes = recvfrom(ctrl_socket_fd, message_buf, 65507,
+            if (setsockopt(ctrl_socket_fd, SOL_SOCKET, SO_RCVTIMEO,
+                           (const char *) &timeout, sizeof timeout) < 0) {
+                throw std::runtime_error("Error configuring socket");
+            }
+
+            ssize_t read_bytes = recvfrom(ctrl_socket_fd, message_buf,
+                                          BUFFER_SIZE,
                                           0, (struct sockaddr *)
-                                                  &receiver_address, &address_length);
+                                                  &receiver_address,
+                                                  &address_length);
             if (read_bytes < 0) {
-                continue;
+                throw std::runtime_error("recvfrom() failed");
             }
             message_buf[read_bytes] = '\0';
 
-            // if lookup reply
+            // jeśli LOOKUP, zleć odpowiedź
             if (strcmp(message_buf, "ZERO_SEVEN_COME_IN\n") == 0) {
                 reply_queue.push(receiver_address);
             }
 
-            // if rexmit zapisz
-            if (std::regex_match(message_buf, std::regex(R"(LOUDER_PLEASE [0-9]+(,[0-9]+)*\n)"))) { // TODO spacje
+            // jeśli REXMIT, zapisz prośbę
+            if (std::regex_match(message_buf,
+                     std::regex(R"(LOUDER_PLEASE [0-9]+(,[0-9]+)*\n)"))) {
                 std::string msg(message_buf);
                 msg.erase(0, 14);
                 std::istringstream msg_stream(msg);
@@ -141,7 +147,7 @@ void Sender::listener() {
             }
         }
 
-        // zleć wysyłanie rexmitów
+        // zleć wysyłanie retransmisji
         for (auto request: rexmit_requests) {
             rexmit_queue.push(request);
         }
@@ -165,20 +171,16 @@ void Sender::rexmit_sender() {
             uint64_t be_session_id = htobe64(session_id);
             uint64_t be_first_byte_num = htobe64(packet_to_send);
 
-            memcpy(rexmit_packet_buf, &be_session_id, 8);
-            memcpy(&rexmit_packet_buf[8], &be_first_byte_num, 8);
+            memcpy(rexmit_packet_buf, &be_session_id, HEADER_ELEMENT_SIZE);
+            memcpy(&rexmit_packet_buf[HEADER_ELEMENT_SIZE], &be_first_byte_num,
+                   HEADER_ELEMENT_SIZE);
 
             for (size_t i = 0; i < packet_size; ++i) {
-                rexmit_packet_buf[16 + i] = fifo[packet_to_send - first_packet + i];
+                rexmit_packet_buf[HEADER_SIZE + i] =
+                        fifo[packet_to_send - first_packet + i];
             }
 
-            ssize_t sent_bytes = sendto(data_socket_fd, rexmit_packet_buf, packet_size + 16, 0,
-                                        (struct sockaddr *) (&multicast_address),
-                                        sizeof(multicast_address));
-
-            if (sent_bytes < 0 || (size_t) sent_bytes < packet_size + 16) {
-                throw std::runtime_error("sendto() failed"); // TODO mega sus
-            }
+            send_message(rexmit_packet_buf);
         }
     }
 }
@@ -190,12 +192,13 @@ void Sender::reply_sender() {
             return;
         }
 
-        ssize_t sent_bytes = sendto(ctrl_socket_fd, reply_message.c_str(), reply_message.length(), 0,
+        ssize_t sent_bytes = sendto(ctrl_socket_fd, reply_message.c_str(),
+                                    reply_message.length(), 0,
                                     (struct sockaddr *) (&receiver_address),
                                     sizeof(receiver_address));
 
         if (sent_bytes < 0 || (size_t) sent_bytes < reply_message.length()) {
-            throw std::runtime_error("sendto() failed"); // TODO mega sus
+            throw std::runtime_error("sendto() failed");
         }
     }
 }
