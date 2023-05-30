@@ -224,10 +224,7 @@ Receiver::~Receiver() {
             next_to_print = 0;
             cv_writing.notify_one();
             cv_receiving.notify_one();
-            cv_loop_start.notify_one();
-            if (shutdown(reply_socket_fd, SHUT_RD) < 0) {
-                std::cerr << "aaaaaaaaaaaaaaaaaaaaaaaaaa";
-            }
+            cv_loop_start.notify_one(); // TODO typ na recvfrom()
         }
         throw;
     }
