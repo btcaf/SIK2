@@ -115,9 +115,9 @@ void Sender::listener() {
                                                   &address_length);
             if (read_bytes < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    throw std::runtime_error("recvfrom() failed");
+                    continue;
                 }
-                continue;
+                throw std::runtime_error("recvfrom() failed");
             }
 
             message_buf[read_bytes] = '\0';
