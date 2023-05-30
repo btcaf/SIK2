@@ -38,7 +38,7 @@ private:
 
     static const size_t BUFFER_SIZE = 1024;
     static const size_t HEADER_SIZE = 16;
-    static const size_t HEADER_ELEMENT_SIZE = 16;
+    static const size_t HEADER_ELEMENT_SIZE = 8;
     static const size_t REXMIT_HEADER_LEN = 14;
 
     const uint64_t session_id = time(NULL);
