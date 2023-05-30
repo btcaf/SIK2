@@ -7,6 +7,8 @@
 namespace po = boost::program_options;
 namespace mp = boost::multiprecision;
 
+const size_t MAX_NAME_LEN = 64;
+
 Temp_Receiver parse_receiver_args(int argc, char *argv[]) {
     std::string discover_address;
     int32_t CTRL_PORT;
@@ -19,7 +21,8 @@ Temp_Receiver parse_receiver_args(int argc, char *argv[]) {
     desc.add_options()
             (
                     "discover-address,d",
-                    po::value<std::string>(&discover_address)->default_value("255.255.255.255")
+                    po::value<std::string>(&discover_address)->
+                            default_value("255.255.255.255")
             )
             (
                     "control-port,C",
@@ -59,15 +62,17 @@ Temp_Receiver parse_receiver_args(int argc, char *argv[]) {
         throw std::runtime_error("Invalid buffer size");
     }
 
-    if (RTIME <= 0 || RTIME > SIZE_MAX) { // TODO sus
+    if (RTIME <= 0 || RTIME > UINT64_MAX) {
         throw std::runtime_error("Invalid time");
     }
 
-    if (!vm["name"].defaulted() && (name.length() > 64 ||
-        !std::regex_match(name, std::regex(R"([\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F])")))) {
+    if (!vm["name"].defaulted() && (name.length() > MAX_NAME_LEN ||
+        !std::regex_match(name,
+            std::regex(R"([\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F])")))) {
         throw std::runtime_error("Invalid name");
     }
 
-    return {discover_address, static_cast<uint16_t>(CTRL_PORT), static_cast<uint16_t>(UI_PORT),
-            static_cast<size_t>(BSIZE), static_cast<uint64_t>(RTIME), name};
+    return {discover_address, static_cast<uint16_t>(CTRL_PORT),
+            static_cast<uint16_t>(UI_PORT), static_cast<size_t>(BSIZE),
+            static_cast<uint64_t>(RTIME), name};
 }

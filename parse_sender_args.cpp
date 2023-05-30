@@ -7,6 +7,9 @@
 namespace po = boost::program_options;
 namespace mp = boost::multiprecision;
 
+const size_t MAX_UDP_PACKET = 65507 - 16;
+const size_t MAX_NAME_LEN = 64;
+
 Temp_Sender parse_sender_args(int argc, char *argv[]) {
     int32_t DATA_PORT;
     int32_t PSIZE;
@@ -53,21 +56,21 @@ Temp_Sender parse_sender_args(int argc, char *argv[]) {
 
     po::notify(vm);
 
-    if (name.length() > 64 ||
+    if (name.length() > MAX_NAME_LEN ||
         !std::regex_match(name,
             std::regex(R"([\x21-\x7F][\x20-\x7F]*[\x21-\x7F]|[\x21-\x7F])"))) {
         throw std::runtime_error("Invalid name");
     }
 
-    if (DATA_PORT < 0 || DATA_PORT > 65535) {
+    if (DATA_PORT < 0 || DATA_PORT > UINT16_MAX) {
         throw std::runtime_error("Invalid data port number");
     }
 
-    if (PSIZE <= 0 || PSIZE > 65507 - 16) {
+    if (PSIZE <= 0 || static_cast<size_t>(PSIZE) > MAX_UDP_PACKET) {
         throw std::runtime_error("Invalid packet size");
     }
 
-    if (CTRL_PORT < 0 || CTRL_PORT > 65535) {
+    if (CTRL_PORT < 0 || CTRL_PORT > UINT16_MAX) {
         throw std::runtime_error("Invalid control port number");
     }
 

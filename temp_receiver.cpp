@@ -18,7 +18,7 @@ Temp_Receiver::Temp_Receiver(std::string _discover_address_string, uint16_t _ctr
 
 Receiver Temp_Receiver::make_receiver() {
     struct sockaddr_in discover_address = get_address(discover_address_string, ctrl_port, false);
-    int lookup_socket_fd = bind_socket(ctrl_port, true); // TODO jeden starczy?
+    int lookup_socket_fd = bind_socket(ctrl_port, true);
     if (fcntl(lookup_socket_fd, F_SETFL, O_NONBLOCK) < 0) {
         throw std::runtime_error("Error configuring socket");
     }

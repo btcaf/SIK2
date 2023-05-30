@@ -7,9 +7,6 @@
 #include <cstring>
 #include <chrono>
 
-/**
- * Zaadaptowana funkcja bind_socket() z zajęć laboratoryjnych.
- */
 int bind_socket(uint16_t port, bool reuse) {
     // zamykane po nieudanym bind() lub w destruktorze klasy Receiver
     int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -19,7 +16,11 @@ int bind_socket(uint16_t port, bool reuse) {
 
     if (reuse) {
         int optval = 1;
-        setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval,
+                       sizeof(optval)) < 0) {
+            throw std::runtime_error("Error configuring socket");
+        }
+
     }
 
     struct sockaddr_in server_address;
@@ -36,10 +37,8 @@ int bind_socket(uint16_t port, bool reuse) {
     return socket_fd;
 }
 
-/**
- * Zaadaptowana funkcja get_address(host, port) z zajęć laboratoryjnych.
- */
-struct sockaddr_in get_address(const std::string& host, uint16_t port, bool check_multicast) {
+struct sockaddr_in get_address(const std::string& host, uint16_t port,
+        bool check_multicast) {
     struct addrinfo hints;
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_INET;
@@ -74,4 +73,30 @@ struct sockaddr_in get_address(const std::string& host, uint16_t port, bool chec
 uint64_t time_since_epoch_ms() {
     return std::chrono::system_clock::now().time_since_epoch() /
            std::chrono::milliseconds(1);
+}
+
+ssize_t safe_recvfrom(int sockfd, void *buf, size_t len, int flags,
+                             struct sockaddr *src_addr,
+                             socklen_t *addrlen, size_t min_expected) {
+    ssize_t read_bytes = recvfrom(sockfd, buf, len, flags, src_addr,
+                                  addrlen);
+
+    if (read_bytes < 0 || (size_t) read_bytes < min_expected) {
+        throw std::runtime_error("recvfrom() failed");
+    }
+
+    return read_bytes;
+}
+
+ssize_t safe_sendto(int sockfd, const void *buf, size_t len, int flags,
+                      const struct sockaddr *src_addr,
+                      socklen_t addrlen, size_t min_expected) {
+    ssize_t sent_bytes = sendto(sockfd, buf, len, flags, src_addr,
+                                  addrlen);
+
+    if (sent_bytes < 0 || (size_t) sent_bytes < min_expected) {
+        throw std::runtime_error("sendto() failed");
+    }
+
+    return sent_bytes;
 }

@@ -43,9 +43,13 @@ Receiver::~Receiver() {
     while (true) {
         uint64_t time = time_since_epoch_ms();
 
-        char const *msg = "ZERO_SEVEN_COME_IN\n";
-        sendto(lookup_socket_fd, msg, 19, 0, (struct sockaddr*) &discover_address, sizeof(discover_address));
-        // TODO błąd?
+        std::string msg = "ZERO_SEVEN_COME_IN\n";
+        ssize_t sent_bytes = sendto(lookup_socket_fd, msg.c_str(), msg.length(),
+                                    0, (struct sockaddr*) &discover_address,
+                                    sizeof(discover_address));
+        if (sent_bytes < 0) {
+            continue;
+        }
 
         bool receiving_curr_value;
         Station_Data curr_station_curr_value;
@@ -56,10 +60,12 @@ Receiver::~Receiver() {
         }
         {
             std::lock_guard<std::mutex> lock{change_station_mut};
-            bool set_new = receiving_curr_value && !stations.empty() && stations[curr_station_curr_value] + 20000 < time;
+            bool set_new = receiving_curr_value && !stations.empty() &&
+                    stations[curr_station_curr_value] + STATION_TIMEOUT < time;
+
             std::erase_if(stations, [time](const auto& item) {
                 auto const& [key, value] = item;
-                return value + 20000 < time;
+                return value + STATION_TIMEOUT < time;
             });
 
             if (receiving_curr_value && stations.empty()) {
@@ -79,11 +85,12 @@ Receiver::~Receiver() {
         }
 
         uint64_t time_diff = time_since_epoch_ms() - time;
-        if (time_diff > 5000) { // raczej nie powinno się wydarzyć
+        if (time_diff > LOOKUP_SLEEP) { // raczej nie powinno się wydarzyć
             continue;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(5000 - time_diff));
+        std::this_thread::sleep_for(std::chrono::milliseconds(
+                LOOKUP_SLEEP - time_diff));
     }
 }
 
@@ -92,17 +99,18 @@ Receiver::~Receiver() {
         struct sockaddr_in received_address;
         socklen_t address_length = (socklen_t) sizeof(received_address);
 
-        char reply_buf[100];
+        char reply_buf[REPLY_BUFSIZE];
 
-        ssize_t read_bytes = recvfrom(reply_socket_fd, reply_buf, 100, 0, (struct sockaddr *) &received_address, &address_length);
-        if (read_bytes < 0) {
-            continue;
-        }
+        ssize_t read_bytes = safe_recvfrom(reply_socket_fd,
+                                           reply_buf, REPLY_BUFSIZE, 0,
+                                           (struct sockaddr *)
+                                                   &received_address,
+                                                   &address_length, 0);
         reply_buf[read_bytes] = '\0';
 
         if (std::regex_match(reply_buf, std::regex(R"(BOREWICZ_HERE [0-9\.]+ [0-9]+ [\x21-\x7F][\x20-\x7F]*[\x21-\x7F]\n)"))) {
             std::string reply(reply_buf);
-            reply.erase(0, 14);
+            reply.erase(0, REPLY_HEADER_LEN);
             std::istringstream reply_stream(reply);
             std::string multicast_address;
             std::string port_string;
@@ -124,7 +132,8 @@ Receiver::~Receiver() {
 
             struct ip_mreq ip_mreq;
             ip_mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-            if (inet_aton(multicast_address.c_str(), &ip_mreq.imr_multiaddr) == 0) {
+            if (inet_aton(multicast_address.c_str(),
+                          &ip_mreq.imr_multiaddr) == 0) {
                 continue;
             }
 
@@ -162,16 +171,24 @@ void Receiver::new_station(const Station_Data& station_data) {
         receiving = false;
         cv_loop_start.wait(lock, [this] { return loop_start; });
         if (old_receiving) {
-            setsockopt(data_socket_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (void *) &curr_station.ip_mreq, sizeof(curr_station.ip_mreq));
-            close(data_socket_fd);
+            if (setsockopt(data_socket_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
+                           (void *) &curr_station.ip_mreq,
+                           sizeof(curr_station.ip_mreq)) < 0) {
+                throw std::runtime_error("Error configuring socket");
+            }
+            if (close(data_socket_fd) < 0) {
+                throw std::runtime_error("Error closing socket");
+            }
         }
         curr_station = station_data;
         data_socket_fd = bind_socket(station_data.port, false);
         struct timeval timeout;
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
-        // TODO błąd
-        setsockopt(data_socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &timeout, sizeof timeout);
+        if (setsockopt(data_socket_fd, SOL_SOCKET, SO_RCVTIMEO,
+                       (const char *) &timeout, sizeof timeout) < 0) {
+            throw std::runtime_error("Error configuring socket");
+        }
         receiving = true;
     }
     cv_receiving.notify_one();
@@ -189,8 +206,11 @@ void Receiver::new_station(const Station_Data& station_data) {
             std::unique_lock<std::mutex> lock(mut);
             cv_receiving.wait(lock, [this] { return receiving; });
         }
-        // TODO błąd
-        setsockopt(data_socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *) &curr_station.ip_mreq, sizeof curr_station.ip_mreq);
+        if (setsockopt(data_socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                       (void *) &curr_station.ip_mreq,
+                       sizeof curr_station.ip_mreq) < 0) {
+            throw std::runtime_error("Error configuring socket");
+        }
 
         session_id = 0;
         while (true) {
@@ -317,9 +337,11 @@ void Receiver::new_station(const Station_Data& station_data) {
                 // wypisujemy tylko te fragmenty bufora, w których jest
                 // odebrana paczka
                 if (received_packets.contains(next_to_print)) {
-                    std::fwrite(&buffer[next_to_print %
+                    if (std::fwrite(&buffer[next_to_print %
                                         max_packets * packet_size], 1,
-                                packet_size, stdout);
+                                packet_size, stdout) < packet_size) {
+                        throw std::runtime_error("Error printing to stdout");
+                    }
                     fflush(stdout);
                 }
                 ++next_to_print;

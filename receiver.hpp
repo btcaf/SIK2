@@ -76,27 +76,16 @@ private:
     void clear_old_packets();
 
     /**
-     * Wrapper recvfrom rzucający wyjątek w przypadku błędu.
-     */
-    static ssize_t safe_recvfrom(int sockfd, void *buf, size_t len, int flags,
-                                 struct sockaddr *src_addr,
-                                 socklen_t *addrlen, size_t min_expected) {
-        ssize_t read_bytes = recvfrom(sockfd, buf, len, flags, src_addr,
-                                      addrlen);
-
-        if (read_bytes < 0 || (size_t) read_bytes < min_expected) {
-            throw std::runtime_error("recvfrom() failed"); // TODO sus
-        }
-
-        return read_bytes;
-    }
-
-    /**
      * Zwraca 1, jeśli wiadomość została poprawnie odczytana (i zapisuje ją
      * w msg_buffer), 0, jeśli została porzucona, a -1, jeśli należy zakończyć
      * odbieranie.
      */
     int receive_message();
+
+    static const uint64_t LOOKUP_SLEEP = 5000;
+    static const uint64_t STATION_TIMEOUT = 20000;
+    static const size_t REPLY_BUFSIZE = 100;
+    static const size_t REPLY_HEADER_LEN = 14;
 
     /* wyszukiwanie stacji */
     const struct sockaddr_in discover_address;

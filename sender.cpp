@@ -50,7 +50,9 @@ void Sender::run() {
             break;
         }
 
-        send_message(packet_buf);
+        safe_sendto(data_socket_fd, packet_buf, full_packet_size, 0,
+                    (struct sockaddr *) (&multicast_address),
+                     sizeof(multicast_address), full_packet_size);
 
         {
             std::lock_guard<std::mutex> lock{mut};
@@ -63,16 +65,6 @@ void Sender::run() {
     }
     is_main_finished = true;
     listener.join();
-}
-
-void Sender::send_message(byte_t *buffer) {
-    ssize_t sent_bytes = sendto(data_socket_fd, buffer, full_packet_size, 0,
-                                (struct sockaddr *) (&multicast_address),
-                                sizeof(multicast_address));
-
-    if (sent_bytes < 0 || (size_t) sent_bytes < full_packet_size) {
-        throw std::runtime_error("sendto() failed");
-    }
 }
 
 void Sender::listener() {
@@ -116,14 +108,12 @@ void Sender::listener() {
                 throw std::runtime_error("Error configuring socket");
             }
 
-            ssize_t read_bytes = recvfrom(ctrl_socket_fd, message_buf,
+            ssize_t read_bytes = safe_recvfrom(ctrl_socket_fd, message_buf,
                                           BUFFER_SIZE,
                                           0, (struct sockaddr *)
                                                   &receiver_address,
-                                                  &address_length);
-            if (read_bytes < 0) {
-                throw std::runtime_error("recvfrom() failed");
-            }
+                                                  &address_length, 0);
+
             message_buf[read_bytes] = '\0';
 
             // jeśli LOOKUP, zleć odpowiedź
@@ -135,7 +125,7 @@ void Sender::listener() {
             if (std::regex_match(message_buf,
                      std::regex(R"(LOUDER_PLEASE [0-9]+(,[0-9]+)*\n)"))) {
                 std::string msg(message_buf);
-                msg.erase(0, 14);
+                msg.erase(0, REXMIT_HEADER_LEN);
                 std::istringstream msg_stream(msg);
                 std::string s;
                 while (std::getline(msg_stream, s, ',')) {
@@ -180,7 +170,9 @@ void Sender::rexmit_sender() {
                         fifo[packet_to_send - first_packet + i];
             }
 
-            send_message(rexmit_packet_buf);
+            safe_sendto(data_socket_fd, rexmit_packet_buf, full_packet_size, 0,
+                        (struct sockaddr *) (&multicast_address),
+                        sizeof(multicast_address), full_packet_size);
         }
     }
 }
@@ -192,13 +184,10 @@ void Sender::reply_sender() {
             return;
         }
 
-        ssize_t sent_bytes = sendto(ctrl_socket_fd, reply_message.c_str(),
-                                    reply_message.length(), 0,
-                                    (struct sockaddr *) (&receiver_address),
-                                    sizeof(receiver_address));
-
-        if (sent_bytes < 0 || (size_t) sent_bytes < reply_message.length()) {
-            throw std::runtime_error("sendto() failed");
-        }
+        safe_sendto(ctrl_socket_fd, reply_message.c_str(),
+                    reply_message.length(), 0,
+                    (struct sockaddr *) (&receiver_address),
+                    sizeof(receiver_address),
+                    reply_message.length());
     }
 }
