@@ -30,8 +30,9 @@ Receiver Temp_Receiver::make_receiver() {
     }
 
     int reply_socket_fd = bind_socket(ctrl_port, UDP, true, false);
-    struct timeval timeout;
 
+    // timeout 1s
+    struct timeval timeout;
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
 
@@ -40,9 +41,11 @@ Receiver Temp_Receiver::make_receiver() {
         throw std::runtime_error("Error configuring socket");
     }
 
+    int rexmit_socket_fd = bind_socket(ctrl_port, UDP, true, false);
+
     int ui_socket_fd = bind_socket(ui_port, TCP, false, true);
 
     return {discover_address, lookup_socket_fd, reply_socket_fd,
-            ui_socket_fd, buffer_size, rexmit_time,
-            favorite_name};
+            ui_socket_fd, buffer_size, rexmit_time, rexmit_socket_fd,
+            ctrl_port, favorite_name};
 }

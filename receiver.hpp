@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <unordered_set>
 #include <map>
+#include <vector>
 
 using byte_t = uint8_t;
 
@@ -36,7 +37,7 @@ struct station_data_cmp {
 class Receiver {
 public:
     Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
-            size_t _buffer_size, uint64_t _rexmit_time, std::string _favorite_name);
+            size_t _buffer_size, uint64_t _rexmit_time, int _rexmit_socket_fd, uint16_t _ctrl_port, std::string _favorite_name);
 
     ~Receiver();
 
@@ -70,12 +71,20 @@ private:
      */
     [[noreturn]] void writer();
 
+    /**
+     * Kod wątku wysyłającego komunikaty REXMIT.
+     */
+    [[noreturn]] void rexmit_request_sender();
+
     void lookuper_wrap();
     void listener_wrap();
     void data_receiver_wrap();
     void writer_wrap();
+    void rexmit_request_sender_wrap();
 
-    void print_missing_packets(uint64_t curr_packet);
+    void update_rexmit_request(uint64_t curr_packet);
+
+    std::vector<std::string> create_rexmit_messages();
 
     /**
      * Usuwa informacje o tych odebranych paczkach, które zostały usunięte
@@ -98,6 +107,8 @@ private:
     static const size_t CONNECTIONS = 10;
     static const size_t QUEUE_LENGTH = 5;
     static const uint64_t TIMEOUT = 5000;
+    static const size_t MAX_REXMIT_COUNT = 10;
+    const std::string REXMIT_HEADER = "LOUDER_PLEASE ";
 
     std::atomic<bool> main_exception = false;
     std::exception_ptr exception_to_throw = nullptr;
@@ -107,7 +118,7 @@ private:
     int lookup_socket_fd;
     int reply_socket_fd;
 
-    /* TODO opis */
+    /* atrybuty związane z obsługą UI */
     int ui_socket_fd;
     int pipe_dsc[2];
     const std::string update_message = "UPDATE";
@@ -130,6 +141,7 @@ private:
     uint64_t max_packets;
 
     std::mutex change_station_mut;
+    std::mutex rexmit_requests_mut;
     std::mutex mut;
     std::condition_variable cv_writing;
     std::condition_variable cv_receiving;
@@ -147,8 +159,12 @@ private:
     // buforze
     std::unordered_set<uint64_t> received_packets;
 
-    /* TODO opis */
+    /* retransmisje */
     const uint64_t rexmit_time;
+    int rexmit_socket_fd;
+    std::unordered_set<uint64_t> rexmit_requests;
+    const uint16_t ctrl_port;
+
     const std::string favorite_name;
 };
 

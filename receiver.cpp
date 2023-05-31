@@ -14,13 +14,15 @@
 #include <fcntl.h>
 
 Receiver::Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
-                   size_t _buffer_size, uint64_t _rexmit_time, std::string _favorite_name)
+                   size_t _buffer_size, uint64_t _rexmit_time, int _rexmit_socket_fd, uint16_t _ctrl_port, std::string _favorite_name)
         : discover_address(_discover_address),
           lookup_socket_fd(_lookup_socket_fd),
           reply_socket_fd(_reply_socket_fd),
           ui_socket_fd(_ui_socket_fd),
           buffer_size(_buffer_size),
           rexmit_time(_rexmit_time),
+          rexmit_socket_fd(_rexmit_socket_fd),
+          ctrl_port(_ctrl_port),
           favorite_name(std::move(_favorite_name)) {}
 
 Receiver::~Receiver() {
@@ -228,6 +230,8 @@ Receiver::~Receiver() {
     std::jthread listener{&Receiver::listener_wrap, this};
     std::jthread data_receiver{&Receiver::data_receiver_wrap, this};
     std::jthread writer{&Receiver::writer_wrap, this};
+    std::jthread rexmit_request_sender{&Receiver::rexmit_request_sender_wrap,
+                                       this};
     try {
         gui_handler();
     } catch (std::exception &e) {
@@ -440,6 +444,8 @@ void Receiver::new_station(const Station_Data& station_data) {
             return;
         }
         data_socket_fd = bind_socket(station_data.port, UDP, false, true);
+
+        // timeout 1s
         struct timeval timeout;
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
@@ -516,7 +522,7 @@ void Receiver::new_station(const Station_Data& station_data) {
                 // paczkach.
                 if (curr_packet < next_to_print) {
                     received_packets.insert(curr_packet);
-                    print_missing_packets(curr_packet);
+                    update_rexmit_request(curr_packet);
                     continue;
                 }
                 // 4. Aktualna paczka jest starsza niż najnowsza odebrana,
@@ -526,7 +532,7 @@ void Receiver::new_station(const Station_Data& station_data) {
                            &msg_buffer[16], packet_size);
 
                     received_packets.insert(curr_packet);
-                    print_missing_packets(curr_packet);
+                    update_rexmit_request(curr_packet);
                     continue;
                 }
                 // 5. Aktualna paczka jest najnowszą z dotychczas odebranych.
@@ -544,7 +550,7 @@ void Receiver::new_station(const Station_Data& station_data) {
 
                 received_packets.insert(curr_packet);
                 clear_old_packets();
-                print_missing_packets(curr_packet);
+                update_rexmit_request(curr_packet);
 
                 // powiadamiamy piszący wątek, jeśli 3 / 4 bufora zostało
                 // zapełnione
@@ -627,17 +633,77 @@ void Receiver::writer_wrap() {
     }
 }
 
-void Receiver::print_missing_packets(uint64_t curr_packet) {
-    // wypisujemy tylko paczki, na które jest miejsce w buforze
-    for (uint64_t i = next_to_receive > max_packets
-                      ? next_to_receive - max_packets
-                      : 0; i < curr_packet; ++i) {
-        if (!received_packets.contains(i)) {
-            std::cerr << "MISSING: BEFORE "
-                      << byte0 + packet_size * curr_packet
-                      << " EXPECTED "
-                      << byte0 + packet_size * i
-                      << "\n";
+void Receiver::rexmit_request_sender() {
+    while (true) {
+        uint64_t time_start = time_since_epoch_ms();
+        struct sockaddr_in sender_address;
+        {
+            std::lock_guard<std::mutex> lock{change_station_mut};
+            sender_address = curr_station.address;
+        }
+        sender_address.sin_port = htons(ctrl_port);
+
+        std::vector<std::string> messages = create_rexmit_messages();
+
+        for (const auto& message: messages) {
+            safe_sendto(rexmit_socket_fd, message.c_str(), message.length(), 0,
+                        (struct sockaddr*) &sender_address, sizeof(sender_address),
+                                message.length());
+        }
+        uint64_t time_end = time_since_epoch_ms();
+        if (time_end > time_start + rexmit_time) {
+            continue;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(time_start - time_end + rexmit_time));
+    }
+}
+
+void Receiver::rexmit_request_sender_wrap() {
+    try {
+        rexmit_request_sender();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
+    }
+}
+
+std::vector<std::string> Receiver::create_rexmit_messages() {
+    std::vector<std::string> result;
+    {
+        std::lock_guard<std::mutex> lock{rexmit_requests_mut};
+        std::string rexmit_msg = REXMIT_HEADER;
+        size_t count_left = MAX_REXMIT_COUNT;
+        for (auto request: rexmit_requests) {
+            rexmit_msg += std::to_string(request);
+            --count_left;
+            if (count_left == 0) {
+                result.push_back(rexmit_msg);
+                rexmit_msg = REXMIT_HEADER;
+                count_left = MAX_REXMIT_COUNT;
+            } else {
+                rexmit_msg += ',';
+            }
+        }
+        if (rexmit_msg != REXMIT_HEADER) {
+            rexmit_msg.pop_back();
+            result.push_back(rexmit_msg);
+        }
+    }
+    return result;
+}
+
+void Receiver::update_rexmit_request(uint64_t curr_packet) {
+    {
+        std::lock_guard<std::mutex> lock{rexmit_requests_mut};
+        rexmit_requests.clear();
+
+        // retransmitujemy tylko paczki, na które jest miejsce w buforze
+        for (uint64_t i = next_to_receive > max_packets
+                          ? next_to_receive - max_packets
+                          : 0; i < curr_packet; ++i) {
+            if (!received_packets.contains(i)) {
+                rexmit_requests.insert(byte0 + packet_size * i);
+            }
         }
     }
 }
