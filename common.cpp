@@ -23,6 +23,7 @@ int bind_socket(uint16_t port, Protocol protocol,
         int optval = 1;
         if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval,
                        sizeof(optval)) < 0) {
+            close(socket_fd);
             throw std::runtime_error("Error configuring socket");
         }
     }

@@ -137,6 +137,7 @@ private:
     /* obsługa wyjątków */
     std::atomic<bool> main_exception = false;
     std::exception_ptr exception_to_throw = nullptr;
+    bool is_data_socket_closed = true;
 
     /* wyszukiwanie stacji */
     const struct sockaddr_in discover_address;

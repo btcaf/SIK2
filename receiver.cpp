@@ -29,7 +29,9 @@ Receiver::~Receiver() {
     // jeśli się nie uda, to nic z tym nie zrobimy
     close(lookup_socket_fd);
     close(ui_socket_fd);
-    // close(data_socket_fd);
+    if (!is_data_socket_closed) {
+        close(data_socket_fd);
+    }
 }
 
 bool disable_telnet_buffering(int client_fd) {
@@ -456,12 +458,14 @@ void Receiver::new_station(const Station_Data& station_data) {
             if (close(data_socket_fd) < 0) {
                 throw std::runtime_error("Error closing socket");
             }
+            is_data_socket_closed = true;
         }
         curr_station = station_data;
         if (curr_station.name.empty()) {
             return;
         }
         data_socket_fd = bind_socket(station_data.port, UDP, true);
+        is_data_socket_closed = false;
 
         // timeout 1s
         struct timeval timeout;
