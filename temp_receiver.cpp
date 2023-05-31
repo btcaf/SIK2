@@ -40,7 +40,7 @@ Receiver Temp_Receiver::make_receiver() {
         throw std::runtime_error("Error configuring socket");
     }
 
-    int ui_socket_fd = bind_socket(ui_port, TCP, true, false);
+    int ui_socket_fd = bind_socket(ui_port, TCP, false, true);
 
     return {discover_address, lookup_socket_fd, reply_socket_fd,
             ui_socket_fd, buffer_size, rexmit_time,
