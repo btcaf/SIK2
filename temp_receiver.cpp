@@ -19,7 +19,10 @@ Temp_Receiver::Temp_Receiver(std::string _discover_address_string, uint16_t _ctr
 Receiver Temp_Receiver::make_receiver() {
     struct sockaddr_in discover_address = get_address(discover_address_string,
             ctrl_port, false);
-    int lookup_socket_fd = bind_socket(ctrl_port, UDP, true, false);
+    int lookup_socket_fd = socket(PF_INET, SOCK_DGRAM, 0);
+    if (lookup_socket_fd < 0) {
+        throw std::runtime_error("Error creating socket");
+    }
     if (fcntl(lookup_socket_fd, F_SETFL, O_NONBLOCK) < 0) {
         throw std::runtime_error("Error configuring socket");
     }
@@ -29,7 +32,7 @@ Receiver Temp_Receiver::make_receiver() {
         throw std::runtime_error("Error configuring socket");
     }
 
-    int reply_socket_fd = bind_socket(ctrl_port, UDP, true, false);
+    int reply_socket_fd = bind_socket(ctrl_port, UDP, false, false);
 
     // timeout 1s
     struct timeval timeout;
@@ -41,7 +44,10 @@ Receiver Temp_Receiver::make_receiver() {
         throw std::runtime_error("Error configuring socket");
     }
 
-    int rexmit_socket_fd = bind_socket(ctrl_port, UDP, true, false);
+    int rexmit_socket_fd = socket(PF_INET, SOCK_DGRAM, 0);
+    if (rexmit_socket_fd < 0) {
+        throw std::runtime_error("Error creating socket");
+    }
 
     int ui_socket_fd = bind_socket(ui_port, TCP, false, true);
 
