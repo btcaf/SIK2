@@ -167,7 +167,7 @@ Receiver::~Receiver() {
                         new_station(stations_vec[0]);
                     }
                 } else {
-                    size_t size = stations_vec.size();
+                    auto size = static_cast<ssize_t>(stations_vec.size());
 
                     Station_Data new_selected =
                             stations_vec[
@@ -190,6 +190,8 @@ Receiver::~Receiver() {
                     ui_string += "\n\n";
                 }
             }
+            ui_string += "------------------------------------------------------------------------\n";
+
             for (size_t i = 2; i < CONNECTIONS; ++i) {
                 if (poll_descriptors[i].fd != -1) {
                     if (update || offset != 0) {
