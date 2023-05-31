@@ -655,7 +655,7 @@ void Receiver::rexmit_request_sender() {
         if (time_end > time_start + rexmit_time) {
             continue;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(time_start - time_end + rexmit_time));
+        std::this_thread::sleep_for(std::chrono::milliseconds(rexmit_time + time_start - time_end));
     }
 }
 
