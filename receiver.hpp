@@ -48,6 +48,11 @@ public:
 
 private:
 
+    /**
+     * Funkcja tworząca wygląd UI.
+     */
+    std::string make_ui_string(ssize_t offset, bool activated);
+
     [[noreturn]] void gui_handler();
 
     void handle_main_exception();

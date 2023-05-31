@@ -37,6 +37,61 @@ bool disable_telnet_buffering(int client_fd) {
             == 10);
 }
 
+std::string Receiver::make_ui_string(ssize_t offset, bool activated) {
+    std::string ui_string = CLEAR_TERMINAL;
+    ui_string += "------------------------------------------------------------------------\n\n";
+    ui_string += " SIK Radio\n\n";
+    ui_string += "------------------------------------------------------------------------\n\n";
+
+    {
+        std::lock_guard<std::mutex> lock{change_station_mut};
+        std::vector<Station_Data> stations_vec;
+        size_t curr_index = 0;
+        bool stop = false;
+        for (auto const &[key, value]: stations) {
+            stations_vec.push_back(key);
+            if (key.name == curr_station.name &&
+                key.port == curr_station.port &&
+                key.ip_mreq.imr_multiaddr.s_addr ==
+                curr_station.ip_mreq.imr_multiaddr.s_addr) {
+                stop = true;
+            }
+            if (!stop) {
+                ++curr_index;
+            }
+        }
+        if (curr_station.name.empty()) {
+            if (activated && !stations_vec.empty()) {
+                new_station(stations_vec[0]);
+            }
+        } else {
+            auto size = static_cast<ssize_t>(stations_vec.size());
+
+            Station_Data new_selected =
+                    stations_vec[
+                            ((static_cast<ssize_t>(curr_index) + offset)
+                             % size + size) % size];
+
+            if (offset % size != 0) {
+                new_station(new_selected);
+            }
+        }
+
+        for (auto const &station: stations_vec) {
+            if (curr_station.name == station.name &&
+                curr_station.port == station.port &&
+                curr_station.ip_mreq.imr_multiaddr.s_addr ==
+                station.ip_mreq.imr_multiaddr.s_addr) {
+                ui_string += " > ";
+            }
+            ui_string += station.name;
+            ui_string += "\n\n";
+        }
+    }
+    ui_string += "------------------------------------------------------------------------\n";
+    return ui_string;
+}
+
 [[noreturn]] void Receiver::gui_handler() {
     /**
      * Zaadaptowany kod z zajęć laboratoryjnych.
@@ -113,7 +168,8 @@ bool disable_telnet_buffering(int client_fd) {
             }
             if (poll_descriptors[1].revents & POLLIN) {
                 char buf[update_message.length() + 1];
-                ssize_t received_bytes = read(poll_descriptors[1].fd, buf, update_message.length());
+                ssize_t received_bytes = read(poll_descriptors[1].fd, buf,
+                                              update_message.length());
                 if (received_bytes < 0) {
                     throw std::runtime_error("Receiving from pipe failed");
                 }
@@ -124,9 +180,11 @@ bool disable_telnet_buffering(int client_fd) {
                 update = true;
             }
             for (size_t i = 2; i < CONNECTIONS; ++i) {
-                if (poll_descriptors[i].fd != -1 && (poll_descriptors[i].revents & (POLLIN | POLLERR))) {
+                if (poll_descriptors[i].fd != -1 &&
+                (poll_descriptors[i].revents & (POLLIN | POLLERR))) {
                     char buf[3];
-                    ssize_t received_bytes = read(poll_descriptors[i].fd, buf, 3);
+                    ssize_t received_bytes = read(poll_descriptors[i].fd,
+                                                  buf, 3);
                     if (received_bytes <= 0) { // błąd lub zakończenie połączenia
                         if (close(poll_descriptors[i].fd) < 0) {
                             throw std::runtime_error("Error closing socket");
@@ -146,57 +204,7 @@ bool disable_telnet_buffering(int client_fd) {
                 }
             }
 
-            std::string ui_string = CLEAR_TERMINAL;
-            ui_string += "------------------------------------------------------------------------\n\n";
-            ui_string += " SIK Radio\n\n";
-            ui_string += "------------------------------------------------------------------------\n\n";
-
-            {
-                std::lock_guard<std::mutex> lock{change_station_mut};
-                std::vector<Station_Data> stations_vec;
-                size_t curr_index = 0;
-                bool stop = false;
-                for (auto const &[key, value]: stations) {
-                    stations_vec.push_back(key);
-                    if (key.name == curr_station.name &&
-                        key.port == curr_station.port &&
-                        key.ip_mreq.imr_multiaddr.s_addr ==
-                        curr_station.ip_mreq.imr_multiaddr.s_addr) {
-                        stop = true;
-                    }
-                    if (!stop) {
-                        ++curr_index;
-                    }
-                }
-                if (curr_station.name.empty()) {
-                    if (activated && !stations_vec.empty()) {
-                        new_station(stations_vec[0]);
-                    }
-                } else {
-                    auto size = static_cast<ssize_t>(stations_vec.size());
-
-                    Station_Data new_selected =
-                            stations_vec[
-                                    ((static_cast<ssize_t>(curr_index) + offset)
-                                     % size + size) % size];
-
-                    if (offset % size != 0) {
-                        new_station(new_selected);
-                    }
-                }
-
-                for (auto const &station: stations_vec) {
-                    if (curr_station.name == station.name &&
-                        curr_station.port == station.port &&
-                        curr_station.ip_mreq.imr_multiaddr.s_addr ==
-                        station.ip_mreq.imr_multiaddr.s_addr) {
-                        ui_string += " > ";
-                    }
-                    ui_string += station.name;
-                    ui_string += "\n\n";
-                }
-            }
-            ui_string += "------------------------------------------------------------------------\n";
+            std::string ui_string = make_ui_string(offset, activated);
 
             for (size_t i = 2; i < CONNECTIONS; ++i) {
                 if (poll_descriptors[i].fd != -1) {
