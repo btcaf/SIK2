@@ -286,16 +286,20 @@ void Receiver::handle_main_exception() {
                 return value + STATION_TIMEOUT < time;
             }) > 0;
 
+            Station_Data empty_station;
+            empty_station.name = "";
             if (receiving_curr_value && stations.empty()) {
-                Station_Data empty_station;
-                empty_station.name = "";
                 new_station(empty_station);
             } else if (set_new) {
-                Station_Data new_stat = stations.begin()->first;
-                for (auto const &[key, value]: stations) {
-                    if (key.name == favorite_name) {
-                        new_stat = key;
-                        break;
+                Station_Data new_stat = empty_station;
+                if (favorite_name.empty()) {
+                    new_stat = stations.begin()->first;
+                } else {
+                    for (auto const &[key, value]: stations) {
+                        if (key.name == favorite_name) {
+                            new_stat = key;
+                            break;
+                        }
                     }
                 }
                 new_station(new_stat);
@@ -387,7 +391,7 @@ void Receiver::lookuper_wrap() {
 
             std::lock_guard<std::mutex> lock{change_station_mut};
             bool update = false;
-            if (name == favorite_name) {
+            if (name == favorite_name && curr_station.name.empty()) {
                 bool flag = true;
                 for (auto const &[key, value]: stations) {
                     if (key.name == name) {
