@@ -76,7 +76,7 @@ Receiver::~Receiver() {
             throw std::runtime_error("poll() failed");
         } else if (poll_status > 0) {
             if (poll_descriptors[0].revents & POLLIN) {
-                /* Przyjmuję nowe połączenie */
+                // przyjmuję nowe połączenie
                 int client_fd = accept(poll_descriptors[0].fd, NULL, NULL);
                 if (client_fd < 0) {
                     continue;
@@ -431,15 +431,17 @@ void Receiver::new_station(const Station_Data& station_data) {
         receiving = false;
         cv_loop_start.wait(lock, [this] { return loop_start; });
         if (old_receiving) {
-            // TODO drop?
             if (close(data_socket_fd) < 0) {
                 throw std::runtime_error("Error closing socket");
             }
         }
         curr_station = station_data;
+        if (curr_station.name.empty()) {
+            return;
+        }
         data_socket_fd = bind_socket(station_data.port, UDP, false, true);
         struct timeval timeout;
-        timeout.tv_sec = 1; // TODO kurwa mać
+        timeout.tv_sec = 1;
         timeout.tv_usec = 0;
         if (setsockopt(data_socket_fd, SOL_SOCKET, SO_RCVTIMEO,
                        (const char *) &timeout, sizeof timeout) < 0) {
@@ -573,9 +575,6 @@ void Receiver::data_receiver_wrap() {
     }
 }
 
-/**
- * Kod wątku wypisującego dane binarne na standardowe wyjście.
- */
 [[noreturn]] void Receiver::writer() {
 
     while (true) {
@@ -643,21 +642,12 @@ void Receiver::print_missing_packets(uint64_t curr_packet) {
     }
 }
 
-/**
- * Usuwa informacje o tych odebranych paczkach, które zostały usunięte
- * z bufora (możliwe, że nie zostały jeszcze nadpisane, ale ich miejsce
- * jest zarezerwowane dla kolejnych paczek).
- */
 void Receiver::clear_old_packets() {
     std::erase_if(received_packets, [this](auto const &x)
     { return x + max_packets < next_to_receive; });
 }
 
-/**
- * Zwraca 1, jeśli wiadomość została poprawnie odczytana (i zapisuje ją
- * w msg_buffer), 0, jeśli została porzucona, a -1, jeśli należy zakończyć
- * odbieranie.
- */
+
 int Receiver::receive_message() {
     uint64_t new_session_id;
 

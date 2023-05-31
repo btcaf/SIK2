@@ -7,7 +7,8 @@
 #include <cstring>
 #include <chrono>
 
-int bind_socket(uint16_t port, Protocol protocol, bool reuse_addr, bool reuse_port) {
+int bind_socket(uint16_t port, Protocol protocol, bool reuse_addr,
+                bool reuse_port) {
     int socket_fd;
     if (protocol == UDP) {
         socket_fd = socket(AF_INET, SOCK_DGRAM, 0);

@@ -97,7 +97,6 @@ private:
     static const size_t REPLY_HEADER_LEN = 14;
     static const size_t CONNECTIONS = 10;
     static const size_t QUEUE_LENGTH = 5;
-    static const size_t BUF_SIZE = 100;
     static const uint64_t TIMEOUT = 5000;
 
     std::atomic<bool> main_exception = false;
