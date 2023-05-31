@@ -18,6 +18,8 @@ public:
     Receiver make_receiver();
 
 private:
+    static const uint64_t TIMEOUT_MS = 1000;
+
     const std::string discover_address_string;
     const uint16_t ctrl_port;
     const uint16_t ui_port;

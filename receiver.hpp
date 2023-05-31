@@ -27,7 +27,8 @@ struct station_data_cmp {
         }
 
         if (a.ip_mreq.imr_multiaddr.s_addr != b.ip_mreq.imr_multiaddr.s_addr) {
-            return a.ip_mreq.imr_multiaddr.s_addr < b.ip_mreq.imr_multiaddr.s_addr;
+            return a.ip_mreq.imr_multiaddr.s_addr <
+                b.ip_mreq.imr_multiaddr.s_addr;
         }
 
         return a.port < b.port;
@@ -36,8 +37,10 @@ struct station_data_cmp {
 
 class Receiver {
 public:
-    Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _ui_socket_fd,
-            size_t _buffer_size, uint64_t _rexmit_time, int _rexmit_socket_fd, uint16_t _ctrl_port, std::string _favorite_name);
+    Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd,
+            int _ui_socket_fd, size_t _buffer_size, uint64_t _rexmit_time,
+            int _rexmit_socket_fd, uint16_t _ctrl_port,
+            std::string _favorite_name);
 
     ~Receiver();
 
@@ -59,6 +62,10 @@ private:
      */
     [[noreturn]] void listener();
 
+    /**
+     * Funkcja zmieniająca aktualnie odtwarzaną stację. Dla argumentu z pustą
+     * nazwą przestaje odtwarzać jakąkolwiek stację.
+     */
     void new_station(const Station_Data& station_data);
 
     /**
@@ -76,14 +83,24 @@ private:
      */
     [[noreturn]] void rexmit_request_sender();
 
+    /**
+     * Funkcje na potrzeby obsługi wyjątków.
+     */
     void lookuper_wrap();
     void listener_wrap();
     void data_receiver_wrap();
     void writer_wrap();
     void rexmit_request_sender_wrap();
 
+    /**
+     * Aktualizuje zbiór paczek, o których retransmisję chce poprosić odbiornik.
+     */
     void update_rexmit_request(uint64_t curr_packet);
 
+    /**
+     * Przygotowuje komunikaty REXMIT na podstawie zbioru paczek
+     * rexmit_requests.
+     */
     std::vector<std::string> create_rexmit_messages();
 
     /**
@@ -106,10 +123,13 @@ private:
     static const size_t REPLY_HEADER_LEN = 14;
     static const size_t CONNECTIONS = 10;
     static const size_t QUEUE_LENGTH = 5;
-    static const uint64_t TIMEOUT = 5000;
+    static const uint64_t POLL_TIMEOUT = 5000;
+    static const uint64_t DATA_RECEIVER_TIMEOUT = 1000;
     static const size_t MAX_REXMIT_COUNT = 10;
     const std::string REXMIT_HEADER = "LOUDER_PLEASE ";
+    const std::string CLEAR_TERMINAL = "\e[1;1H\e[2J";
 
+    /* obsługa wyjątków */
     std::atomic<bool> main_exception = false;
     std::exception_ptr exception_to_throw = nullptr;
 

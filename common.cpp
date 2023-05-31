@@ -86,19 +86,6 @@ uint64_t time_since_epoch_ms() {
            std::chrono::milliseconds(1);
 }
 
-ssize_t safe_recvfrom(int sockfd, void *buf, size_t len, int flags,
-                             struct sockaddr *src_addr,
-                             socklen_t *addrlen, size_t min_expected) {
-    ssize_t read_bytes = recvfrom(sockfd, buf, len, flags, src_addr,
-                                  addrlen);
-
-    if (read_bytes < 0 || (size_t) read_bytes < min_expected) {
-        throw std::runtime_error("recvfrom() failed");
-    }
-
-    return read_bytes;
-}
-
 ssize_t safe_sendto(int sockfd, const void *buf, size_t len, int flags,
                       const struct sockaddr *src_addr,
                       socklen_t addrlen, size_t min_expected) {

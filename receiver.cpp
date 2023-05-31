@@ -32,14 +32,18 @@ Receiver::~Receiver() {
     // close(data_socket_fd);
 }
 
+bool disable_telnet_buffering(int client_fd) {
+    return (write(client_fd, "\xff\xfd\x22\xff\xfa\x22\x01\x00\xff\xf0", 10)
+            == 10);
+}
+
 [[noreturn]] void Receiver::gui_handler() {
     /**
      * Zaadaptowany kod z zajęć laboratoryjnych.
      */
     bool first_time[CONNECTIONS];
-
     struct pollfd poll_descriptors[CONNECTIONS];
-    /* Inicjujemy tablicę z gniazdami klientów, poll_descriptors[0] to gniazdo centrali */
+
     for (size_t i = 0; i < CONNECTIONS; ++i) {
         poll_descriptors[i].fd = -1;
         poll_descriptors[i].events = POLLIN;
@@ -71,7 +75,7 @@ Receiver::~Receiver() {
             poll_descriptor.revents = 0;
         }
 
-        int poll_status = poll(poll_descriptors, CONNECTIONS, TIMEOUT);
+        int poll_status = poll(poll_descriptors, CONNECTIONS, POLL_TIMEOUT);
         if (poll_status == -1) {
             throw std::runtime_error("poll() failed");
         } else if (poll_status > 0) {
@@ -89,12 +93,14 @@ Receiver::~Receiver() {
                 bool accepted = false;
                 for (size_t i = 2; i < CONNECTIONS; ++i) {
                     if (poll_descriptors[i].fd == -1) {
+                        if (!disable_telnet_buffering(client_fd)) {
+                            continue;
+                        }
                         poll_descriptors[i].fd = client_fd;
                         poll_descriptors[i].events = POLLIN;
                         active_clients++;
                         accepted = true;
                         first_time[i] = true;
-                        write(client_fd, "\xff\xfd\x22\xff\xfa\x22\x01\x00\xff\xf0", 10); // TODO error
                         break;
                     }
                 }
@@ -140,7 +146,7 @@ Receiver::~Receiver() {
                 }
             }
 
-            std::string ui_string = "\e[1;1H\e[2J";
+            std::string ui_string = CLEAR_TERMINAL;
             ui_string += "------------------------------------------------------------------------\n\n";
             ui_string += " SIK Radio\n\n";
             ui_string += "------------------------------------------------------------------------\n\n";
@@ -314,7 +320,7 @@ void Receiver::handle_main_exception() {
         }
 
         uint64_t time_diff = time_since_epoch_ms() - time;
-        if (time_diff > LOOKUP_SLEEP) { // raczej nie powinno się wydarzyć
+        if (time_diff > LOOKUP_SLEEP) {
             continue;
         }
 
@@ -451,8 +457,8 @@ void Receiver::new_station(const Station_Data& station_data) {
 
         // timeout 1s
         struct timeval timeout;
-        timeout.tv_sec = 1;
-        timeout.tv_usec = 0;
+        timeout.tv_sec = DATA_RECEIVER_TIMEOUT / 1000;
+        timeout.tv_usec = (DATA_RECEIVER_TIMEOUT % 1000) * 1000;
         if (setsockopt(data_socket_fd, SOL_SOCKET, SO_RCVTIMEO,
                        (const char *) &timeout, sizeof timeout) < 0) {
             throw std::runtime_error("Error configuring socket");
@@ -501,6 +507,9 @@ void Receiver::new_station(const Station_Data& station_data) {
             // (wynik odejmowania powyżej może być ujemny)
             // w ten sposób wiemy, że paczkę nr next_to_print rzeczywiście
             // będziemy mogli wypisać (tj. nie została nadpisana)
+
+            // zmiana względem oryginalnego sposobu odtwarzania: pomijamy
+            // brakujące paczki zamiast resetować odtwarzanie
 
             // mamy pięć przypadków:
 
@@ -613,7 +622,8 @@ void Receiver::data_receiver_wrap() {
                     }
                 }
                 // wypisujemy tylko te fragmenty bufora, w których jest
-                // odebrana paczka
+                // odebrana paczka (zmiana względem oryginalnego sposobu
+                // odtwarzania)
                 if (received_packets.contains(next_to_print)) {
                     if (std::fwrite(&buffer[next_to_print %
                                         max_packets * packet_size], 1,
@@ -637,6 +647,11 @@ void Receiver::writer_wrap() {
     }
 }
 
+/**
+ * Zmiana względem oryginalnego sposobu odtwarzania: wysyłamy retransmisje
+ * wszystkich potrzebnych paczek co RTIME, zamiast każdej paczki w czasie
+ * zależnym od czasu odebrania paczki o większym numerze.
+ */
 void Receiver::rexmit_request_sender() {
     while (true) {
         handle_main_exception();
@@ -703,7 +718,7 @@ void Receiver::update_rexmit_request(uint64_t curr_packet) {
         std::lock_guard<std::mutex> lock{rexmit_requests_mut};
         rexmit_requests.clear();
 
-        // retransmitujemy tylko paczki, na które jest miejsce w buforze
+        // chcemy retransmisji tylko paczek, na które jest miejsce w buforze
         for (uint64_t i = next_to_receive > max_packets
                           ? next_to_receive - max_packets
                           : 0; i < curr_packet; ++i) {
