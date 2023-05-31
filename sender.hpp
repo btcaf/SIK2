@@ -31,14 +31,27 @@ public:
 
 private:
     void main_sender();
+
+    /**
+     * Funkcje na potrzeby obsługi wyjątków.
+     */
     void listener_wrap();
     void rexmit_sender_wrap();
     void reply_sender_wrap();
 
+    /**
+     * Kod wątku odbierającego komunikaty odbiorników.
+     */
     void listener();
 
+    /**
+     * Kod wątku wysyłającego retransmisje.
+     */
     void rexmit_sender();
 
+    /**
+     * Kod wątku wysyłającego komunikaty REPLY.
+     */
     void reply_sender();
 
     static const size_t BUFFER_SIZE = 1024;
@@ -66,6 +79,7 @@ private:
     std::atomic_bool is_main_finished = false;
     std::atomic_bool is_listener_finished = false;
     std::exception_ptr exception_to_throw = nullptr;
+
     Blocking_Queue<struct sockaddr_in> reply_queue;
     Blocking_Queue<uint64_t> rexmit_queue;
 
