@@ -13,11 +13,10 @@
 #include <poll.h>
 #include <fcntl.h>
 
-Receiver::Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
+Receiver::Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _ui_socket_fd,
                    size_t _buffer_size, uint64_t _rexmit_time, int _rexmit_socket_fd, uint16_t _ctrl_port, std::string _favorite_name)
         : discover_address(_discover_address),
           lookup_socket_fd(_lookup_socket_fd),
-          reply_socket_fd(_reply_socket_fd),
           ui_socket_fd(_ui_socket_fd),
           buffer_size(_buffer_size),
           rexmit_time(_rexmit_time),
@@ -29,7 +28,6 @@ Receiver::~Receiver() {
     delete[] buffer;
     // jeśli się nie uda, to nic z tym nie zrobimy
     close(lookup_socket_fd);
-    close(reply_socket_fd);
     close(ui_socket_fd);
     // close(data_socket_fd);
 }
@@ -336,7 +334,7 @@ void Receiver::lookuper_wrap() {
 
         char reply_buf[REPLY_BUFSIZE];
 
-        ssize_t read_bytes = recvfrom(reply_socket_fd,
+        ssize_t read_bytes = recvfrom(lookup_socket_fd,
                                            reply_buf, REPLY_BUFSIZE, 0,
                                            (struct sockaddr *)
                                                    &received_address,

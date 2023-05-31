@@ -36,7 +36,7 @@ struct station_data_cmp {
 
 class Receiver {
 public:
-    Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _reply_socket_fd, int _ui_socket_fd,
+    Receiver(struct sockaddr_in _discover_address, int _lookup_socket_fd, int _ui_socket_fd,
             size_t _buffer_size, uint64_t _rexmit_time, int _rexmit_socket_fd, uint16_t _ctrl_port, std::string _favorite_name);
 
     ~Receiver();
@@ -116,7 +116,6 @@ private:
     /* wyszukiwanie stacji */
     const struct sockaddr_in discover_address;
     int lookup_socket_fd;
-    int reply_socket_fd;
 
     /* atrybuty związane z obsługą UI */
     int ui_socket_fd;
