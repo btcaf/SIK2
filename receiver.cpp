@@ -635,6 +635,7 @@ void Receiver::writer_wrap() {
 
 void Receiver::rexmit_request_sender() {
     while (true) {
+        handle_main_exception();
         uint64_t time_start = time_since_epoch_ms();
         struct sockaddr_in sender_address;
         {
