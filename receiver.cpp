@@ -642,6 +642,7 @@ void Receiver::rexmit_request_sender() {
             std::lock_guard<std::mutex> lock{change_station_mut};
             sender_address = curr_station.address;
         }
+        sender_address.sin_family = AF_INET;
         sender_address.sin_port = htons(ctrl_port);
 
         std::vector<std::string> messages = create_rexmit_messages();
