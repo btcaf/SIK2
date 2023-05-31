@@ -7,7 +7,7 @@
 #include <cstring>
 #include <chrono>
 
-int bind_socket(uint16_t port, Protocol protocol, bool reuse_addr,
+int bind_socket(uint16_t port, Protocol protocol,
                 bool reuse_port) {
     int socket_fd;
     if (protocol == UDP) {
@@ -22,13 +22,6 @@ int bind_socket(uint16_t port, Protocol protocol, bool reuse_addr,
     if (reuse_port) {
         int optval = 1;
         if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &optval,
-                       sizeof(optval)) < 0) {
-            throw std::runtime_error("Error configuring socket");
-        }
-    }
-    if (reuse_addr) {
-        int optval = 1;
-        if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &optval,
                        sizeof(optval)) < 0) {
             throw std::runtime_error("Error configuring socket");
         }

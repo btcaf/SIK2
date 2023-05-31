@@ -20,7 +20,7 @@ Temp_Receiver::Temp_Receiver(std::string _discover_address_string,
 Receiver Temp_Receiver::make_receiver() {
     struct sockaddr_in discover_address = get_address(discover_address_string,
             ctrl_port, false);
-    int lookup_socket_fd = bind_socket(0, UDP, false, false);
+    int lookup_socket_fd = bind_socket(0, UDP, false);
     int optval = 1;
     if (setsockopt(lookup_socket_fd, SOL_SOCKET, SO_BROADCAST,
                    &optval, sizeof(optval))) {
@@ -47,7 +47,7 @@ Receiver Temp_Receiver::make_receiver() {
         throw std::runtime_error("Error creating socket");
     }
 
-    int ui_socket_fd = bind_socket(ui_port, TCP, false, true);
+    int ui_socket_fd = bind_socket(ui_port, TCP, true);
 
     return {discover_address, lookup_socket_fd,
             ui_socket_fd, buffer_size, rexmit_time, rexmit_socket_fd,

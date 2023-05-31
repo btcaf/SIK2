@@ -13,8 +13,8 @@ typedef enum Protocol {
 /**
  * Zaadaptowana funkcja bind_socket() z zajęć laboratoryjnych.
  */
-int bind_socket(uint16_t port, Protocol protocol, bool reuse_port,
-                bool reuse_addr);
+int bind_socket(uint16_t port, Protocol protocol,
+                bool reuse_port);
 
 /**
  * Zaadaptowana funkcja get_address(host, port) z zajęć laboratoryjnych.

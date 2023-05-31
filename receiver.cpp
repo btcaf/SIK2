@@ -461,7 +461,7 @@ void Receiver::new_station(const Station_Data& station_data) {
         if (curr_station.name.empty()) {
             return;
         }
-        data_socket_fd = bind_socket(station_data.port, UDP, false, true);
+        data_socket_fd = bind_socket(station_data.port, UDP, true);
 
         // timeout 1s
         struct timeval timeout;
