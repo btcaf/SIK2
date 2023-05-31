@@ -1,3 +1,7 @@
+/**
+ * Implementacja blokującej kolejki.
+ */
+
 #ifndef SIKRADIO_BLOCKING_QUEUE_HPP
 #define SIKRADIO_BLOCKING_QUEUE_HPP
 

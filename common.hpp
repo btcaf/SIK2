@@ -27,7 +27,7 @@ uint64_t time_since_epoch_ms();
 /**
  * Wrapper recvfrom rzucający wyjątek w przypadku błędu.
  */
-ssize_t safe_recvfrom(int sockfd, void *buf, size_t len, int flags,
+ssize_t safe_recvfrom(int sockfd, void *buf, size_t len, int flags, // TODO czy działa
                       struct sockaddr *src_addr,
                       socklen_t *addrlen, size_t min_expected);
 
