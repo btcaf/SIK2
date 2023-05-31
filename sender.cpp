@@ -29,9 +29,14 @@ Sender::~Sender() {
     close(ctrl_socket_fd);
 }
 
-void Sender::run() {
-    std::thread listener{&Sender::listener, this};
+void Sender::main_sender() {
     while (true) {
+        {
+            std::lock_guard<std::mutex> lock{mut};
+            if (exception_to_throw) {
+                std::rethrow_exception(exception_to_throw);
+            }
+        }
         // konwersja na sieciowy porządek bajtów
         uint64_t be_session_id = htobe64(session_id);
 
@@ -61,29 +66,26 @@ void Sender::run() {
             }
             packet_num += packet_size;
         }
-
     }
-    is_main_finished = true;
-    listener.join();
+}
+
+void Sender::run() {
+    std::thread listener{&Sender::listener, this};
+    try {
+        main_sender();
+        is_main_finished = true;
+        listener.join();
+    } catch (std::exception &e) {
+        is_main_finished = true;
+        listener.join();
+        throw;
+    }
 }
 
 void Sender::listener() {
-    std::thread rexmit_sender{&Sender::rexmit_sender, this};
-    std::thread reply_sender{&Sender::reply_sender, this};
     while (true) {
         // sprawdź, czy nie kończyć, jeśli tak to poczekaj na wysyłające wątki
         if (is_main_finished) {
-            is_listener_finished = true;
-
-            // przekazujemy dane do kolejki, aby odblokować potencjalnie
-            // czekające wątki
-            struct sockaddr_in dummy_address;
-            memset(&dummy_address, 0, sizeof(dummy_address));
-            reply_queue.push(dummy_address);
-            rexmit_queue.push(0);
-
-            reply_sender.join();
-            rexmit_sender.join();
             return;
         }
 
@@ -151,6 +153,28 @@ void Sender::listener() {
     }
 }
 
+void Sender::listener_wrap() {
+    std::thread rexmit_sender{&Sender::rexmit_sender, this};
+    std::thread reply_sender{&Sender::reply_sender, this};
+    try {
+        listener();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
+    }
+    is_listener_finished = true;
+
+    // przekazujemy dane do kolejki, aby odblokować potencjalnie
+    // czekające wątki
+    struct sockaddr_in dummy_address;
+    memset(&dummy_address, 0, sizeof(dummy_address));
+    reply_queue.push(dummy_address);
+    rexmit_queue.push(0);
+
+    reply_sender.join();
+    rexmit_sender.join();
+}
+
 void Sender::rexmit_sender() {
     while (true) {
         uint64_t packet_to_send = rexmit_queue.pop();
@@ -183,6 +207,15 @@ void Sender::rexmit_sender() {
     }
 }
 
+void Sender::rexmit_sender_wrap() {
+    try {
+        rexmit_sender();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
+    }
+}
+
 void Sender::reply_sender() {
     while (true) {
         struct sockaddr_in receiver_address = reply_queue.pop();
@@ -195,5 +228,14 @@ void Sender::reply_sender() {
                     (struct sockaddr *) (&receiver_address),
                     sizeof(receiver_address),
                     reply_message.length());
+    }
+}
+
+void Sender::reply_sender_wrap() {
+    try {
+        reply_sender();
+    } catch (std::exception &e) {
+        std::lock_guard<std::mutex> lock{mut};
+        exception_to_throw = std::current_exception();
     }
 }

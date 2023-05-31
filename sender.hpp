@@ -30,6 +30,11 @@ public:
     void run();
 
 private:
+    void main_sender();
+    void listener_wrap();
+    void rexmit_sender_wrap();
+    void reply_sender_wrap();
+
     void listener();
 
     void rexmit_sender();
@@ -60,6 +65,7 @@ private:
 
     std::atomic_bool is_main_finished = false;
     std::atomic_bool is_listener_finished = false;
+    std::exception_ptr exception_to_throw = nullptr;
     Blocking_Queue<struct sockaddr_in> reply_queue;
     Blocking_Queue<uint64_t> rexmit_queue;
 
