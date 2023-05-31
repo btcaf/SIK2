@@ -70,7 +70,7 @@ void Sender::main_sender() {
 }
 
 void Sender::run() {
-    std::thread listener{&Sender::listener, this};
+    std::thread listener{&Sender::listener_wrap, this};
     try {
         main_sender();
         is_main_finished = true;
@@ -154,8 +154,8 @@ void Sender::listener() {
 }
 
 void Sender::listener_wrap() {
-    std::thread rexmit_sender{&Sender::rexmit_sender, this};
-    std::thread reply_sender{&Sender::reply_sender, this};
+    std::thread rexmit_sender{&Sender::rexmit_sender_wrap, this};
+    std::thread reply_sender{&Sender::reply_sender_wrap, this};
     try {
         listener();
     } catch (std::exception &e) {
