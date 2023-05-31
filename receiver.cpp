@@ -431,17 +431,13 @@ void Receiver::new_station(const Station_Data& station_data) {
         receiving = false;
         cv_loop_start.wait(lock, [this] { return loop_start; });
         if (old_receiving) {
-            if (setsockopt(data_socket_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
-                           (void *) &curr_station.ip_mreq,
-                           sizeof(curr_station.ip_mreq)) < 0) {
-                throw std::runtime_error("Error configuring socket");
-            }
+            // TODO drop?
             if (close(data_socket_fd) < 0) {
                 throw std::runtime_error("Error closing socket");
             }
         }
         curr_station = station_data;
-        data_socket_fd = bind_socket(station_data.port, UDP, false);
+        data_socket_fd = bind_socket(station_data.port, UDP, false, true);
         struct timeval timeout;
         timeout.tv_sec = 1; // TODO kurwa mać
         timeout.tv_usec = 0;
@@ -472,6 +468,7 @@ void Receiver::new_station(const Station_Data& station_data) {
             throw std::runtime_error("Error configuring socket");
         }
 
+        loop_start = false;
         session_id = 0;
         while (true) {
             handle_main_exception();
